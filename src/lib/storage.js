@@ -27,9 +27,10 @@ export const DATA_KEYS = [
   'tf_being',
   'tf_future',
   'tf_strategies',
+  'tf_daily_routine',
   'tf_gcal_clientId',
-  // 認証トークンはエクスポート対象外（セキュリティ）
-  'tf_gcal_events',
+  // 認証トークン（tf_gcal_user_tokens）はエクスポート対象外（セキュリティ）
+  'tf_gcal_user_events',
 ]
 
 const SCHEMA_VERSION = 2

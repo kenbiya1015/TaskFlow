@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
 import { requestAccessToken, fetchEvents, revokeToken } from '../lib/googleCalendar'
+import { GCAL_CLIENT_ID } from '../config'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6)
 
@@ -45,14 +46,27 @@ export default function TodaySchedule({ currentUser }) {
   const [schedule, setSchedule] = useLocalStorage('tf_schedule', {})
   const [tasks] = useLocalStorage('tf_tasks', [])
 
-  // Google Calendar state
-  const [clientId, setClientId] = useLocalStorage('tf_gcal_clientId', '')
-  const [token, setToken] = useLocalStorage('tf_gcal_token', null)
-  const [gcalEvents, setGcalEvents] = useLocalStorage('tf_gcal_events', {})
+  // Google Calendar state（ユーザーごとに分離）
+  const [clientIdOverride, setClientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
+  const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
+  const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
   const [showConfig, setShowConfig] = useState(false)
   const [busy, setBusy] = useState(false)
   const [gcalError, setGcalError] = useState('')
   const [gcalInfo, setGcalInfo] = useState('')
+
+  const clientId = (clientIdOverride || '').trim() || GCAL_CLIENT_ID
+
+  const token = allTokens[currentUser] || null
+  const setToken = (t) => {
+    const next = { ...allTokens }
+    if (t == null) delete next[currentUser]
+    else next[currentUser] = t
+    setAllTokens(next)
+  }
+
+  const gcalEvents = allEvents[currentUser] || {}
+  const setGcalEvents = (e) => setAllEvents({ ...allEvents, [currentUser]: e })
 
   const todayD = startOfDay(new Date())
   const tomorrowD = addDays(todayD, 1)
@@ -69,28 +83,34 @@ export default function TodaySchedule({ currentUser }) {
     items.forEach(ev => {
       const start = ev.start
       if (!start) return
-      // For all-day events, ev.start = 'YYYY-MM-DD'. For timed, ISO with TZ.
       const key = ev.allDay ? start.slice(0, 10) : dateKey(new Date(start))
       if (!grouped[key]) grouped[key] = []
       grouped[key].push(ev)
     })
-    // Replace today + tomorrow buckets only
-    setGcalEvents({ ...gcalEvents, [todayKey]: grouped[todayKey] || [], [tomorrowKey]: grouped[tomorrowKey] || [] })
+    setAllEvents(prev => ({
+      ...prev,
+      [currentUser]: {
+        ...(prev[currentUser] || {}),
+        [todayKey]: grouped[todayKey] || [],
+        [tomorrowKey]: grouped[tomorrowKey] || [],
+        __syncedAt: Date.now(),
+      },
+    }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayKey, tomorrowKey])
+  }, [todayKey, tomorrowKey, currentUser])
 
   const connect = async () => {
-    if (!clientId.trim()) {
-      setGcalError('クライアント ID を入力してください')
+    if (!clientId) {
+      setGcalError('クライアント ID が設定されていません')
       setShowConfig(true)
       return
     }
     setBusy(true); setGcalError(''); setGcalInfo('')
     try {
-      const t = await requestAccessToken(clientId.trim())
+      const t = await requestAccessToken(clientId)
       setToken(t)
       await syncWithToken(t.access_token)
-      setGcalInfo('連携しました。今日・明日のイベントを取得しました。')
+      setGcalInfo(`${currentUser} さんの Google カレンダーと連携しました。`)
     } catch (e) {
       setGcalError(e.message || String(e))
     } finally {
@@ -119,13 +139,13 @@ export default function TodaySchedule({ currentUser }) {
     setGcalInfo('連携を解除しました')
   }
 
-  // Auto-sync once on mount if token is still valid
+  // ユーザー切替・初回マウント時に、有効なトークンがあれば自動同期
   useEffect(() => {
     if (tokenValid) {
       sync()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [currentUser])
 
   const addEntry = (dateK, hour, textRaw, meta = {}) => {
     const text = (textRaw || '').trim()
@@ -183,16 +203,17 @@ export default function TodaySchedule({ currentUser }) {
         <div className="card" style={{ borderColor: 'var(--accent)' }}>
           <div className="card-title">⚙️ Google カレンダー設定</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
-            Google Cloud Console で OAuth 2.0 クライアント ID（ウェブ アプリケーション）を作成し、<br />
-            「承認済みの JavaScript 生成元」に <code>{location.origin}</code> を登録してから貼り付けてください。<br />
-            必要 API: <strong>Google Calendar API</strong> を有効化。スコープ: <code>calendar.readonly</code>
+            クライアント ID は本アプリに既定値が組み込まれています。<br />
+            別の OAuth クライアントを使う場合のみ下に上書き値を入力してください。<br />
+            Google Cloud Console の「承認済みの JavaScript 生成元」に <code>{location.origin}</code> を登録しておく必要があります。<br />
+            必要 API: <strong>Google Calendar API</strong> ／ スコープ: <code>calendar.readonly</code>
           </div>
           <div className="form-row">
             <input
               className="text-input"
-              placeholder="例: 1234567890-abcdefg.apps.googleusercontent.com"
-              value={clientId}
-              onChange={e => setClientId(e.target.value)}
+              placeholder={`既定値を使用中：${GCAL_CLIENT_ID}`}
+              value={clientIdOverride}
+              onChange={e => setClientIdOverride(e.target.value)}
             />
             <button className="btn btn-secondary" onClick={() => setShowConfig(false)}>閉じる</button>
           </div>

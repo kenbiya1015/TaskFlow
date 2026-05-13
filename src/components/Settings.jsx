@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { MEMBERS } from '../members'
 import { downloadExport, importAll, DATA_KEYS } from '../lib/storage'
+import { GCAL_CLIENT_ID } from '../config'
 
 export default function Settings({ currentUser, onChangeUser, onLogout }) {
   const [members, setMembers] = useLocalStorage('tf_members', MEMBERS)
@@ -93,9 +94,25 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
       <div className="card">
         <div className="card-title">📅 Google カレンダー連携</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
-          Google Cloud Console で <strong>Calendar API</strong> を有効化し、OAuth 2.0 クライアント ID（ウェブ）を作成。<br />
-          「承認済みの JavaScript 生成元」に <code>{location.origin}</code> を登録した後、下に貼り付けてください。<br />
-          実際の接続・同期はスケジュール画面の「Googleカレンダー連携」ボタンから行います。
+          クライアント ID は本アプリに <strong>組み込み済み</strong> です。<br />
+          実際の接続はスケジュール画面の「📅 Googleカレンダー連携」ボタンから、<strong>メンバーごとに個別</strong>に行えます。<br />
+          各メンバーは自分の Google アカウントでログインし、今日・明日のスケジュールを自動取得します。<br />
+          <br />
+          <strong>事前準備（管理者のみ）</strong>：Google Cloud Console の OAuth クライアント設定で、
+          「承認済みの JavaScript 生成元」に以下を登録してください：
+          <ul style={{ marginTop: 6, marginBottom: 6, paddingLeft: 18 }}>
+            <li><code>{location.origin}</code>（現在のオリジン）</li>
+            <li><code>https://task-flow-khaki-one.vercel.app</code>（本番）</li>
+            <li><code>http://localhost:5173</code>（ローカル開発）</li>
+          </ul>
+          スコープ: <code>calendar.readonly</code> ／ 必要 API: <code>Google Calendar API</code>
+        </div>
+        <div style={{
+          fontSize: 11, padding: '8px 10px', background: 'var(--surface-2)',
+          borderRadius: 6, marginBottom: 10, color: 'var(--text-muted)',
+          fontFamily: 'monospace', wordBreak: 'break-all',
+        }}>
+          埋め込み済みクライアント ID: {GCAL_CLIENT_ID}
         </div>
         <GoogleClientIdField />
       </div>
@@ -137,7 +154,8 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
           <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_mtmemos')}>MTメモ削除</button>
           <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_partners')}>営業先削除</button>
           <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_strategies')}>戦略・戦術削除</button>
-          <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_gcal_events')}>GCalキャッシュ削除</button>
+          <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_gcal_user_events')}>GCalキャッシュ削除</button>
+          <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_gcal_user_tokens')}>GCalトークン削除</button>
         </div>
       </div>
     </div>
@@ -147,13 +165,21 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
 function GoogleClientIdField() {
   const [clientId, setClientId] = useLocalStorage('tf_gcal_clientId', '')
   return (
-    <div className="form-row" style={{ margin: 0 }}>
-      <input
-        className="text-input"
-        placeholder="OAuth クライアント ID（xxx.apps.googleusercontent.com）"
-        value={clientId}
-        onChange={e => setClientId(e.target.value)}
-      />
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+        オプション：別の OAuth クライアントを使う場合のみ上書き値を入力（通常は空のままで OK）
+      </div>
+      <div className="form-row" style={{ margin: 0 }}>
+        <input
+          className="text-input"
+          placeholder="上書きクライアント ID（空欄で組み込み値を使用）"
+          value={clientId}
+          onChange={e => setClientId(e.target.value)}
+        />
+        {clientId && (
+          <button className="btn btn-secondary btn-small" onClick={() => setClientId('')}>クリア</button>
+        )}
+      </div>
     </div>
   )
 }

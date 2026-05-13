@@ -1530,6 +1530,54 @@
   font-weight: 600;
 }
 
+/* ===== Google カレンダー ミニ表示（Home） ===== */
+.gcal-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gcal-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+
+.gcal-event {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #eafaf1;
+  border-left: 3px solid var(--success);
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 4px;
+  align-items: center;
+}
+
+.gcal-event-time {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+
+.gcal-event-title {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gcal-empty {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .schedule-container { grid-template-columns: 1fr; }

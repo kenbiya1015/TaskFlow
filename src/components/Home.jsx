@@ -1,12 +1,31 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { findMember } from '../members'
 import { STRATEGY_CATEGORIES } from './Strategy'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
+import { fetchEvents } from '../lib/googleCalendar'
+
+function dateKeyOf(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 function todayKey() {
+  return dateKeyOf(new Date())
+}
+
+function tomorrowKey() {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  d.setDate(d.getDate() + 1)
+  return dateKeyOf(d)
+}
+
+function fmtEventTime(ev) {
+  if (ev.allDay) return '終日'
+  const s = new Date(ev.start)
+  const e = ev.end ? new Date(ev.end) : null
+  const pad = n => String(n).padStart(2, '0')
+  const f = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return e ? `${f(s)}–${f(e)}` : f(s)
 }
 
 function greeting() {
@@ -24,9 +43,61 @@ export default function Home({ userName, onNavigate }) {
   const [memos] = useLocalStorage('tf_mtmemos', [])
   const [strategies] = useLocalStorage('tf_strategies', {})
   const [routineLog, setRoutineLog] = useLocalStorage('tf_daily_routine', {})
+  const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
+  const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
 
   const member = findMember(userName)
   const today = todayKey()
+  const tomorrow = tomorrowKey()
+
+  const myToken = allTokens[userName] || null
+  const tokenValid = myToken && myToken.access_token && myToken.expires_at > Date.now()
+  const myEvents = allEvents[userName] || {}
+  const todayEvents = myEvents[today] || []
+  const tomorrowEvents = myEvents[tomorrow] || []
+  const [gcalBusy, setGcalBusy] = useState(false)
+
+  // 有効なトークンがあれば、マイページ表示時にも自動同期（バックグラウンド）
+  useEffect(() => {
+    let cancelled = false
+    if (!tokenValid) return
+    setGcalBusy(true)
+    const from = new Date(); from.setHours(0, 0, 0, 0)
+    const to = new Date(from); to.setDate(to.getDate() + 2)
+    fetchEvents(myToken.access_token, from, to)
+      .then(items => {
+        if (cancelled) return
+        const grouped = {}
+        items.forEach(ev => {
+          const start = ev.start
+          if (!start) return
+          const key = ev.allDay ? start.slice(0, 10) : dateKeyOf(new Date(start))
+          if (!grouped[key]) grouped[key] = []
+          grouped[key].push(ev)
+        })
+        setAllEvents(prev => ({
+          ...prev,
+          [userName]: {
+            ...(prev[userName] || {}),
+            [today]: grouped[today] || [],
+            [tomorrow]: grouped[tomorrow] || [],
+            __syncedAt: Date.now(),
+          },
+        }))
+      })
+      .catch(() => {
+        // トークン失効の可能性 → 解除
+        if (cancelled) return
+        setAllTokens(prev => {
+          const next = { ...prev }
+          delete next[userName]
+          return next
+        })
+      })
+      .finally(() => { if (!cancelled) setGcalBusy(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userName])
 
   const myTasks = useMemo(
     () => tasks
@@ -160,6 +231,57 @@ export default function Home({ userName, onNavigate }) {
                   {e.text}
                 </div>
               ))
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">
+              🗓️ Google カレンダー
+              <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+                {tokenValid
+                  ? (gcalBusy ? '同期中...' : `${userName} さんと連携中`)
+                  : '未連携'}
+              </span>
+            </div>
+            {!tokenValid ? (
+              <div className="empty" style={{ padding: 16, fontSize: 13 }}>
+                スケジュール画面の「📅 Googleカレンダー連携」から自分のアカウントを接続すると、
+                ここに今日と明日の予定が自動表示されます。
+                <div style={{ marginTop: 10 }}>
+                  <button className="btn btn-small" onClick={() => onNavigate?.('schedule')}>
+                    📅 スケジュール画面へ
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="gcal-mini">
+                <div className="gcal-day">
+                  <div className="gcal-day-label">📅 今日（{today.slice(5)}）　{todayEvents.length}件</div>
+                  {todayEvents.length === 0 ? (
+                    <div className="gcal-empty">予定なし</div>
+                  ) : (
+                    todayEvents.map(ev => (
+                      <div key={ev.id} className="gcal-event">
+                        <span className="gcal-event-time">{fmtEventTime(ev)}</span>
+                        <span className="gcal-event-title">{ev.title}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="gcal-day">
+                  <div className="gcal-day-label">🌅 明日（{tomorrow.slice(5)}）　{tomorrowEvents.length}件</div>
+                  {tomorrowEvents.length === 0 ? (
+                    <div className="gcal-empty">予定なし</div>
+                  ) : (
+                    tomorrowEvents.map(ev => (
+                      <div key={ev.id} className="gcal-event">
+                        <span className="gcal-event-time">{fmtEventTime(ev)}</span>
+                        <span className="gcal-event-title">{ev.title}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
