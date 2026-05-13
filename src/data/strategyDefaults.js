@@ -63,11 +63,11 @@ export const DEFAULT_STRATEGIES = {
   },
 }
 
-// マイページ「今日やること3つ」
+// マイページ「今日やること」（朝昼夜の区分なし）
 export const DAILY_ROUTINE = [
-  { key: 'morning', time: '朝', icon: '🌅', text: 'ショート動画1本投稿' },
-  { key: 'noon',    time: '昼', icon: '🏢', text: '健美屋オフィス営業 1件' },
-  { key: 'night',   time: '夜', icon: '📱', text: 'LINE配信・返信' },
+  { key: 'sns_video', icon: '🎬', text: 'SNS動画投稿' },
+  { key: 'sales',     icon: '🏢', text: '営業1件' },
+  { key: 'line',      icon: '📱', text: 'LINE配信' },
 ]
 
 // マイページ「ロードマップ進捗」
@@ -75,8 +75,9 @@ export const ROADMAP = [
   { key: 'phase1', phase: '今〜半年',  goal: '月商110万円・定期100人・オフィス10社' },
   { key: 'phase2', phase: '半年〜1年', goal: '月商300万円' },
   { key: 'phase3', phase: '1〜3年',    goal: '年商1億円' },
-  { key: 'phase4', phase: '3〜7年',    goal: '年商10億円' },
-  { key: 'phase5', phase: '7〜15年',   goal: '年商1000億円' },
+  { key: 'phase4', phase: '3〜5年',    goal: '年商10億円' },
+  { key: 'phase5', phase: '5〜10年',   goal: '年商100億円' },
+  { key: 'phase6', phase: '10〜15年',  goal: '年商1000億円' },
 ]
 
 // 現在地（最初のフェーズが現在進行中）

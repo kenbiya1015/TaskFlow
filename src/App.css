@@ -94,10 +94,10 @@
 
 /* ===== Sidebar ===== */
 .sidebar {
-  width: 220px;
+  width: 232px;
   background: var(--surface);
   color: var(--text);
-  padding: 20px 0;
+  padding: 24px 0 20px;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -110,23 +110,28 @@
 
 .sidebar-header {
   text-align: center;
-  padding: 0 16px 16px;
+  padding: 0 18px 18px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .sidebar-title {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.05em;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .sidebar-subtitle {
   font-size: 11px;
   color: var(--text-muted);
-  letter-spacing: 0.3em;
-  margin-top: 2px;
+  letter-spacing: 0.35em;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
 .sidebar-user {
@@ -190,14 +195,15 @@
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 10px 14px;
   font-size: 14px;
   color: var(--text-soft);
-  border-radius: 8px;
-  transition: all 0.15s ease;
+  border-radius: 10px;
+  transition: all 0.18s ease;
   text-align: left;
+  font-weight: 500;
 }
 
 .nav-item:hover {
@@ -207,8 +213,9 @@
 
 .nav-item.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-deep);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .nav-icon {
@@ -254,50 +261,67 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 22px;
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
   box-shadow: var(--shadow);
   margin-bottom: 16px;
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .card-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 12px;
-  padding-bottom: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ===== Buttons ===== */
 .btn {
-  padding: 8px 18px;
+  padding: 9px 18px;
   background: var(--accent);
   color: #fff;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  transition: all 0.15s ease;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: all 0.18s ease;
   border: 1px solid var(--accent);
+  box-shadow: 0 1px 2px rgba(13, 148, 136, 0.18);
 }
 
 .btn:hover {
   background: var(--accent-deep);
   border-color: var(--accent-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.22);
+}
+
+.btn:active {
+  transform: translateY(0);
 }
 
 .btn-secondary {
   background: var(--surface);
   color: var(--text-soft);
-  border-color: var(--border-strong);
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 .btn-secondary:hover {
   background: var(--surface-2);
   color: var(--text);
-  border-color: var(--text-muted);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
 }
 
 .btn-small {
@@ -337,19 +361,19 @@
 }
 
 .text-input, .select, .textarea {
-  padding: 8px 12px;
+  padding: 9px 13px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   font-size: 14px;
   color: var(--text);
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .text-input:focus, .select:focus, .textarea:focus {
   border-color: var(--accent);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.14);
 }
 
 .text-input {
@@ -1576,6 +1600,383 @@
   color: var(--text-muted);
   background: var(--surface-2);
   border-radius: 4px;
+}
+
+/* ===== データ管理カード（マイページ） ===== */
+.data-mgmt-card {
+  border-left: 3px solid var(--accent);
+}
+
+/* ===== 自動バックアップ履歴（設定画面） ===== */
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.backup-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  border-radius: 4px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ===== A/B/C/D 重要度バッジ ===== */
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align-last: center;
+}
+
+.priority-badge.priority-A { background: #dc2626; }
+.priority-badge.priority-B { background: #ea580c; }
+.priority-badge.priority-C { background: #2563eb; }
+.priority-badge.priority-D { background: #6b7280; }
+
+.priority-badge:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ===== 期日バッジ（色分け） ===== */
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.due-overdue {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.due-today {
+  background: #fed7aa;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.due-soon {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.due-later {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ===== ドラッグ&ドロップ ===== */
+.task-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 14px;
+  user-select: none;
+  padding: 0 4px;
+  letter-spacing: -2px;
+}
+
+.task-drag-handle:active { cursor: grabbing; }
+
+.task-item.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.task-item[draggable="true"] {
+  cursor: grab;
+}
+
+.task-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* ===== 全体戦略カード（Home & Strategy 上部） ===== */
+.overall-strategy-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f5fdfb 100%);
+  border: 1px solid var(--accent-soft);
+  border-left: 3px solid var(--accent);
+}
+
+.overall-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.overall-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.overall-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+}
+
+.overall-text {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.overall-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.strategy-overall {
+  background: linear-gradient(135deg, #ffffff 0%, #f5fdfb 100%);
+  border: 1px solid var(--accent-soft);
+  margin-bottom: 24px;
+}
+
+/* ===== Google カレンダー 週表示（Home） ===== */
+.gcal-week {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gcal-week-day {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+
+.gcal-week-day.today {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.gcal-week-day-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+
+.gcal-week-day.today .gcal-week-day-label {
+  color: var(--accent-deep);
+}
+
+.gcal-week-day-name { font-size: 13px; font-weight: 700; }
+.gcal-week-day-wday { color: var(--text-muted); font-weight: 400; }
+.gcal-week-day-count { margin-left: auto; font-weight: 400; color: var(--text-muted); }
+
+/* ===== なりたい自分の実践（Home） ===== */
+.being-practice-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.being-practice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.being-practice-row.done {
+  opacity: 0.55;
+}
+
+.being-practice-row.done .being-practice-text {
+  text-decoration: line-through;
+}
+
+.being-practice-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.being-practice-row.done .being-practice-dot {
+  background: var(--success);
+  color: #fff;
+  border-color: var(--success);
+}
+
+/* ===== 今後の取り組み（Home） ===== */
+.future-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.future-row {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.future-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.future-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.future-status {
+  font-size: 11px;
+  color: var(--accent-deep);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: var(--accent-soft);
+  border-radius: 12px;
+}
+
+/* ===== ホームのタスクリストミニ表示 ===== */
+.home-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-task-item {
+  display: grid !important;
+  grid-template-columns: 1fr auto auto auto !important;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px !important;
+  font-size: 13px;
+}
+
+/* ===== ルーチン行（朝昼夜なし版） ===== */
+.routine-icon {
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+}
+
+/* ===== SNS アカウントピル（全ネタ一覧） ===== */
+.sns-account-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+
+.sns-account-pill-shimura { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.sns-account-pill-kenbiya { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.sns-account-pill-seitai  { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+
+/* ===== ログイン画面のブランド表示 ===== */
+.login-brand {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+/* ===== Stats bar 全体的なリファイン ===== */
+.stats-bar {
+  margin-bottom: 20px;
+}
+
+.stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.stat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-top: 2px;
 }
 
 /* ===== Responsive ===== */

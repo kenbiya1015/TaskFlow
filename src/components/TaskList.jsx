@@ -1,26 +1,85 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
 import { MEMBER_NAMES } from '../members'
 
 const CATEGORIES = ['全て', '健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
 const MEMBERS = MEMBER_NAMES
-const PRIORITIES = ['高', '中', '低']
+const PRIORITY_OPTIONS = ['A', 'B', 'C', 'D']
+
+// 旧形式 高/中/低 → A/B/C への互換変換
+function normalizePriority(p) {
+  if (p === '高') return 'A'
+  if (p === '中') return 'B'
+  if (p === '低') return 'C'
+  if (PRIORITY_OPTIONS.includes(p)) return p
+  return 'C'
+}
+
+const PRIORITY_LABELS = {
+  A: '最重要',
+  B: '重要',
+  C: '通常',
+  D: '低',
+}
+
+function dueStatus(due) {
+  if (!due) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = new Date(due); d.setHours(0, 0, 0, 0)
+  const diffDays = Math.floor((d - today) / 86400000)
+  if (diffDays < 0)  return { key: 'overdue', label: `${-diffDays}日経過` }
+  if (diffDays === 0) return { key: 'today', label: '今日' }
+  if (diffDays <= 3) return { key: 'soon',   label: `あと${diffDays}日` }
+  return { key: 'later', label: `〜${due.slice(5)}` }
+}
 
 export default function TaskList({ currentUser }) {
   const [tasks, setTasks] = useLocalStorage('tf_tasks', [])
   const [filter, setFilter] = useState('全て')
   const [memberFilter, setMemberFilter] = useState(currentUser || '全員')
+  const [draggedId, setDraggedId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
 
   const [newText, setNewText] = useState('')
   const [newCat, setNewCat] = useState('健美屋')
   const [newMember, setNewMember] = useState(currentUser || MEMBERS[0])
-  const [newPriority, setNewPriority] = useState('中')
+  const [newPriority, setNewPriority] = useState('B')
   const [newDue, setNewDue] = useState('')
+
+  // 互換性確保：order と priority(A/B/C/D) のフィールドを補完
+  useEffect(() => {
+    const needsFix = tasks.some(t =>
+      t.order == null || !PRIORITY_OPTIONS.includes(t.priority),
+    )
+    if (!needsFix) return
+    // 既存の順番（createdAt desc）を尊重しつつ order を割り当てる
+    const sorted = [...tasks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    const orderMap = new Map(sorted.map((t, i) => [t.id, i + 1]))
+    setTasks(tasks.map(t => ({
+      ...t,
+      priority: normalizePriority(t.priority),
+      order: t.order ?? orderMap.get(t.id) ?? 999,
+    })))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const nextOrder = () =>
+    tasks.length === 0 ? 1 : Math.max(...tasks.map(t => t.order ?? 0)) + 1
 
   const add = () => {
     if (!newText.trim()) return
     setTasks([
-      { id: uid(), text: newText.trim(), category: newCat, member: newMember, priority: newPriority, due: newDue, done: false, createdAt: Date.now() },
+      {
+        id: uid(),
+        text: newText.trim(),
+        category: newCat,
+        member: newMember,
+        priority: newPriority,
+        due: newDue,
+        done: false,
+        createdAt: Date.now(),
+        order: nextOrder(),
+      },
       ...tasks,
     ])
     setNewText('')
@@ -29,6 +88,21 @@ export default function TaskList({ currentUser }) {
 
   const toggle = id => setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t))
   const remove = id => setTasks(tasks.filter(t => t.id !== id))
+  const updatePriority = (id, p) =>
+    setTasks(tasks.map(t => t.id === id ? { ...t, priority: p } : t))
+
+  // D&D 並び替え：fromId を toId の位置の直前へ移動
+  const reorderTasks = (fromId, toId) => {
+    if (!fromId || fromId === toId) return
+    const list = [...tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    const fromIdx = list.findIndex(t => t.id === fromId)
+    const toIdx = list.findIndex(t => t.id === toId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const [moved] = list.splice(fromIdx, 1)
+    list.splice(toIdx, 0, moved)
+    const reordered = list.map((t, i) => ({ ...t, order: i + 1 }))
+    setTasks(reordered)
+  }
 
   const filtered = useMemo(() => {
     return tasks
@@ -36,9 +110,9 @@ export default function TaskList({ currentUser }) {
       .filter(t => memberFilter === '全員' || t.member === memberFilter)
       .sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1
-        const p = { 高: 0, 中: 1, 低: 2 }
-        if (p[a.priority] !== p[b.priority]) return p[a.priority] - p[b.priority]
-        return b.createdAt - a.createdAt
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER
+        return ao - bo
       })
   }, [tasks, filter, memberFilter])
 
@@ -48,7 +122,7 @@ export default function TaskList({ currentUser }) {
       total: tasks.length,
       open: open.length,
       done: tasks.length - open.length,
-      高: open.filter(t => t.priority === '高').length,
+      A: open.filter(t => normalizePriority(t.priority) === 'A').length,
     }
   }, [tasks])
 
@@ -57,7 +131,7 @@ export default function TaskList({ currentUser }) {
       <div className="page-header">
         <div>
           <div className="page-title">タスク一覧</div>
-          <div className="page-subtitle">TASK　LIST</div>
+          <div className="page-subtitle">TASK　LIST　·　ドラッグで並び替え</div>
         </div>
         <select className="select" value={memberFilter} onChange={e => setMemberFilter(e.target.value)}>
           <option>全員</option>
@@ -69,7 +143,7 @@ export default function TaskList({ currentUser }) {
         <div className="stat-tile"><div className="stat-num">{stats.total}</div><div className="stat-label">総タスク</div></div>
         <div className="stat-tile"><div className="stat-num">{stats.open}</div><div className="stat-label">未完了</div></div>
         <div className="stat-tile"><div className="stat-num">{stats.done}</div><div className="stat-label">完了</div></div>
-        <div className="stat-tile"><div className="stat-num" style={{ color: 'var(--vermillion)' }}>{stats.高}</div><div className="stat-label">優先 高</div></div>
+        <div className="stat-tile"><div className="stat-num" style={{ color: 'var(--danger)' }}>{stats.A}</div><div className="stat-label">A（最重要）</div></div>
       </div>
 
       <div className="card">
@@ -89,9 +163,9 @@ export default function TaskList({ currentUser }) {
             {MEMBERS.map(m => <option key={m}>{m}</option>)}
           </select>
           <select className="select" value={newPriority} onChange={e => setNewPriority(e.target.value)}>
-            {PRIORITIES.map(p => <option key={p}>{`優先度 ${p}`}</option>)}
+            {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}（{PRIORITY_LABELS[p]}）</option>)}
           </select>
-          <input type="date" className="text-input" value={newDue} onChange={e => setNewDue(e.target.value)} style={{ minWidth: 0 }}/>
+          <input type="date" className="text-input" value={newDue} onChange={e => setNewDue(e.target.value)} style={{ minWidth: 0 }} />
           <button className="btn" onClick={add}>追加</button>
         </div>
       </div>
@@ -116,19 +190,64 @@ export default function TaskList({ currentUser }) {
         </div>
       ) : (
         <ul className="task-list">
-          {filtered.map(t => (
-            <li key={t.id} className={`task-item ${t.done ? 'done' : ''}`}>
-              <input type="checkbox" className="task-check" checked={t.done} onChange={() => toggle(t.id)} />
-              <div className="task-text">{t.text}</div>
-              <span className={`tag tag-${t.category}`}>{t.category}</span>
-              <span className="task-meta">{t.member}</span>
-              <span className={`task-priority priority-${t.priority}`}>● {t.priority}</span>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                {t.due && <span className="task-meta">〜{t.due.slice(5)}</span>}
+          {filtered.map(t => {
+            const pri = normalizePriority(t.priority)
+            const ds = dueStatus(t.due)
+            const isDragOver = dragOverId === t.id
+            return (
+              <li
+                key={t.id}
+                className={`task-item ${t.done ? 'done' : ''} ${isDragOver ? 'drag-over' : ''}`}
+                draggable={!t.done}
+                onDragStart={e => {
+                  if (t.done) return
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', t.id)
+                  setDraggedId(t.id)
+                }}
+                onDragOver={e => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverId !== t.id) setDragOverId(t.id)
+                }}
+                onDragLeave={() => {
+                  if (dragOverId === t.id) setDragOverId(null)
+                }}
+                onDrop={e => {
+                  e.preventDefault()
+                  const fromId = e.dataTransfer.getData('text/plain') || draggedId
+                  reorderTasks(fromId, t.id)
+                  setDraggedId(null)
+                  setDragOverId(null)
+                }}
+                onDragEnd={() => {
+                  setDraggedId(null)
+                  setDragOverId(null)
+                }}
+              >
+                <span className="task-drag-handle" title="ドラッグで並び替え">⋮⋮</span>
+                <input type="checkbox" className="task-check" checked={t.done} onChange={() => toggle(t.id)} />
+                <div className="task-text">{t.text}</div>
+                <span className={`tag tag-${t.category}`}>{t.category}</span>
+                <span className="task-meta">{t.member}</span>
+                <select
+                  className={`priority-badge priority-${pri}`}
+                  value={pri}
+                  onChange={e => updatePriority(t.id, e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  title={`重要度：${PRIORITY_LABELS[pri]}`}
+                >
+                  {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                {ds ? (
+                  <span className={`due-badge due-${ds.key}`} title={t.due}>{ds.label}</span>
+                ) : (
+                  <span className="task-meta">期日なし</span>
+                )}
                 <button className="btn-icon" onClick={() => remove(t.id)} title="削除">×</button>
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

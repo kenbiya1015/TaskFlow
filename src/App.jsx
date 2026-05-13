@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { MEMBERS, findMember } from './members'
-import { runMigrations } from './lib/storage'
+import { runMigrations, autoBackup } from './lib/storage'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -35,7 +35,12 @@ export default function App() {
   const [currentUser, setCurrentUser] = useLocalStorage('tf_currentUser', '')
   const [page, setPage] = useState('home')
 
-  useEffect(() => { runMigrations() }, [])
+  useEffect(() => {
+    // 1. 起動時にスキーマ移行を実行（古いキー名・形式があれば自動で新形式へ）
+    runMigrations()
+    // 2. 起動時のスナップショットを履歴に保存（最大5世代、1時間以内は重複保存しない）
+    autoBackup()
+  }, [])
 
   useEffect(() => {
     if (currentUser) setPage('home')
@@ -75,8 +80,8 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-title">TaskFlow</div>
-          <div className="sidebar-subtitle">健美</div>
+          <div className="sidebar-title">heartrust</div>
+          <div className="sidebar-subtitle">健美屋</div>
         </div>
 
         <div className="sidebar-user">
@@ -116,7 +121,8 @@ function Login({ onLogin }) {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <div className="login-title">TaskFlow へようこそ</div>
+        <div className="login-brand">heartrust</div>
+        <div className="login-title">健美屋へようこそ</div>
         <div className="login-subtitle">SELECT　YOUR　ACCOUNT</div>
         <div className="login-users">
           {MEMBERS.map(m => (

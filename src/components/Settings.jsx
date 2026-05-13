@@ -1,7 +1,16 @@
 import { useRef, useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { MEMBERS } from '../members'
-import { downloadExport, importAll, DATA_KEYS } from '../lib/storage'
+import {
+  downloadExport,
+  importAll,
+  restoreSampleData,
+  DATA_KEYS,
+  listAutoBackups,
+  restoreAutoBackup,
+  deleteAutoBackup,
+  autoBackup,
+} from '../lib/storage'
 import { GCAL_CLIENT_ID } from '../config'
 
 export default function Settings({ currentUser, onChangeUser, onLogout }) {
@@ -9,6 +18,58 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
   const fileRef = useRef(null)
   const [importInfo, setImportInfo] = useState('')
   const [importError, setImportError] = useState('')
+  const [sampleInfo, setSampleInfo] = useState('')
+  const [sampleError, setSampleError] = useState('')
+  const [backupInfo, setBackupInfo] = useState('')
+  const [backupError, setBackupError] = useState('')
+  const [backupTick, setBackupTick] = useState(0)
+  const backups = listAutoBackups()
+
+  const handleManualBackup = () => {
+    setBackupError(''); setBackupInfo('')
+    try {
+      const ok = autoBackup({ force: true })
+      if (ok) {
+        setBackupInfo('スナップショットを保存しました')
+        setBackupTick(t => t + 1)
+      } else {
+        setBackupError('保存すべきデータがありません')
+      }
+    } catch (e) {
+      setBackupError(`保存失敗: ${e.message || e}`)
+    }
+  }
+
+  const handleRestoreBackup = (timestamp, label) => {
+    if (!confirm(`${label} のバックアップから復元します。現在のデータにマージされます（既存データは温存）。続行しますか？`)) return
+    try {
+      autoBackup({ force: true })
+      restoreAutoBackup(timestamp, { merge: true })
+      setBackupInfo('復元しました。再読み込みします...')
+      setTimeout(() => location.reload(), 800)
+    } catch (e) {
+      setBackupError(`復元失敗: ${e.message || e}`)
+    }
+  }
+
+  const handleRestoreBackupOverwrite = (timestamp, label) => {
+    if (!confirm(`⚠ ${label} のバックアップで現在のデータを完全に上書きします。\n本当によろしいですか？（事前にエクスポートを推奨）`)) return
+    try {
+      autoBackup({ force: true })
+      restoreAutoBackup(timestamp, { merge: false })
+      setBackupInfo('上書き復元しました。再読み込みします...')
+      setTimeout(() => location.reload(), 800)
+    } catch (e) {
+      setBackupError(`復元失敗: ${e.message || e}`)
+    }
+  }
+
+  const handleDeleteBackup = (timestamp, label) => {
+    if (!confirm(`${label} のバックアップを削除します。よろしいですか？`)) return
+    deleteAutoBackup(timestamp)
+    setBackupInfo(`${label} を削除しました`)
+    setBackupTick(t => t + 1)
+  }
 
   const updateMember = (id, patch) => {
     setMembers(members.map(m => m.id === id ? { ...m, ...patch } : m))
@@ -18,6 +79,21 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
     if (!confirm(`localStorage の "${key}" を削除します。よろしいですか？`)) return
     window.localStorage.removeItem(key)
     location.reload()
+  }
+
+  const handleRestoreSample = async (mode) => {
+    setSampleError(''); setSampleInfo('')
+    const msg = mode === 'reset'
+      ? '⚠ 既存のタスク・アイデア・MTメモなどを上書きしてサンプルデータに戻します。\n本当によろしいですか？（バックアップ済みであることを確認してください）'
+      : '空になっているデータだけサンプルで埋めます。既存データは保持されます。続行しますか？'
+    if (!confirm(msg)) return
+    try {
+      await restoreSampleData(mode)
+      setSampleInfo(`サンプルデータを${mode === 'reset' ? '初期化投入' : 'マージ投入'}しました。再読み込みします...`)
+      setTimeout(() => location.reload(), 800)
+    } catch (e) {
+      setSampleError(`サンプル投入失敗: ${e.message || e}`)
+    }
   }
 
   const handleImport = async (merge) => {
@@ -139,6 +215,88 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
         </div>
         {importInfo && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 8 }}>{importInfo}</div>}
         {importError && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</div>}
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          🕘 自動バックアップ履歴
+          <span style={{ float: 'right', fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+            {backups.length}/5 世代
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.7 }}>
+          起動するたびに自動でスナップショットが保存されます（同一内容・1時間以内はスキップ）。<br />
+          各バックアップから個別に復元できます。世代は最大 5 件保持されます。
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <button className="btn btn-small" onClick={handleManualBackup}>
+            📸 いま手動でスナップショット
+          </button>
+        </div>
+        {backups.length === 0 ? (
+          <div className="empty" style={{ padding: 16, fontSize: 13 }}>
+            バックアップはまだありません
+          </div>
+        ) : (
+          <div className="backup-list" key={backupTick}>
+            {backups.map((b, i) => {
+              const ts = new Date(b.timestamp)
+              const label = ts.toLocaleString('ja-JP')
+              const sizeKb = (b.sizeBytes / 1024).toFixed(1)
+              return (
+                <div key={b.timestamp} className="backup-row">
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      {i === 0 && <span className="backup-badge">最新</span>}
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {b.keyCount}キー / {sizeKb} KB / v{b.version}
+                    </div>
+                  </div>
+                  <div className="form-row" style={{ margin: 0 }}>
+                    <button
+                      className="btn btn-small"
+                      onClick={() => handleRestoreBackup(b.timestamp, label)}
+                      title="既存データに上書きせず、空のキーだけ埋める"
+                    >🩹 マージ復元</button>
+                    <button
+                      className="btn btn-small btn-secondary"
+                      onClick={() => handleRestoreBackupOverwrite(b.timestamp, label)}
+                      title="現在のデータを完全に上書き"
+                    >♻ 上書き復元</button>
+                    <button
+                      className="btn-icon"
+                      onClick={() => handleDeleteBackup(b.timestamp, label)}
+                      title="このバックアップを削除"
+                    >🗑</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {backupInfo && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 8 }}>{backupInfo}</div>}
+        {backupError && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{backupError}</div>}
+      </div>
+
+      <div className="card">
+        <div className="card-title">🎁 サンプルデータ復元</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.7 }}>
+          タスク・アイデア・MTメモ・営業先・SNS投稿・年間目標・今後の取り組み・なりたい自分・戦略のサンプルを投入します。<br />
+          <strong>マージ投入</strong>：空になっているデータだけサンプルで埋める（既存データを温存。データを失った時の復旧用）<br />
+          <strong>リセット投入</strong>：既存データを上書きしてサンプル状態に戻す（要バックアップ）
+        </div>
+        <div className="form-row" style={{ flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => handleRestoreSample('merge')}>
+            🎁 マージ投入（推奨）
+          </button>
+          <button className="btn btn-secondary" onClick={() => handleRestoreSample('reset')}>
+            ⚠ リセット投入
+          </button>
+        </div>
+        {sampleInfo && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 8 }}>{sampleInfo}</div>}
+        {sampleError && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{sampleError}</div>}
       </div>
 
       <div className="card">

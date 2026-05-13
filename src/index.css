@@ -1,23 +1,41 @@
 :root {
-  --bg: #f7f8fa;
+  /* ベースは純白に近い清潔感のあるトーン */
+  --bg: #fafbfc;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
-  --border: #e3e6eb;
-  --border-strong: #cdd2da;
-  --text: #1f2430;
-  --text-soft: #4a5160;
-  --text-muted: #828a98;
-  --accent: #2f6fed;
-  --accent-soft: #e8f0ff;
-  --accent-deep: #1f56c4;
-  --success: #1f9e6a;
-  --warning: #d97706;
-  --danger: #d43f3f;
-  --info: #4a78c2;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.05);
-  --shadow-strong: 0 4px 14px rgba(15, 23, 42, 0.08);
+  --surface-2: #f5f7fa;
+  --surface-3: #eef1f5;
+  --border: #e6eaef;
+  --border-strong: #c9d0d8;
 
-  /* legacy aliases (existing components still reference these names) */
+  /* テキストは深いチャコールでコントラスト高め */
+  --text: #1a1d23;
+  --text-soft: #4b5563;
+  --text-muted: #8a93a0;
+
+  /* アクセントは健康・美容にも馴染むティール */
+  --accent: #0d9488;
+  --accent-soft: #ecfdf5;
+  --accent-deep: #0b7a70;
+  --accent-2: #2563eb; /* セカンダリの青 */
+
+  --success: #059669;
+  --warning: #ea580c;
+  --danger:  #dc2626;
+  --info:    #3b82f6;
+  --gold:    #d4a017;
+
+  /* やわらかな影 */
+  --shadow:        0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.04);
+  --shadow-md:     0 2px 8px rgba(17, 24, 39, 0.06), 0 4px 16px rgba(17, 24, 39, 0.04);
+  --shadow-strong: 0 6px 24px rgba(17, 24, 39, 0.08);
+
+  /* 角丸 */
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* legacy aliases */
   --washi-base: var(--bg);
   --washi-light: var(--surface);
   --washi-dark: var(--surface-2);
@@ -45,12 +63,14 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   letter-spacing: 0;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
 }
 
 button {

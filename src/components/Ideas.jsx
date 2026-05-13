@@ -4,8 +4,10 @@ import { MEMBER_NAMES } from '../members'
 
 export default function Ideas({ currentUser }) {
   const [ideas, setIdeas] = useLocalStorage('tf_ideas', [])
+  const [tasks, setTasks] = useLocalStorage('tf_tasks', [])
   const [text, setText] = useState('')
   const [author, setAuthor] = useState(currentUser || MEMBER_NAMES[0])
+  const [addedFlash, setAddedFlash] = useState(null)
 
   const add = () => {
     if (!text.trim()) return
@@ -15,6 +17,25 @@ export default function Ideas({ currentUser }) {
 
   const remove = id => setIdeas(ideas.filter(i => i.id !== id))
   const togglePin = id => setIdeas(ideas.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i))
+
+  const sendToTasks = (idea) => {
+    const nextOrder = tasks.length === 0 ? 1 : Math.max(...tasks.map(t => t.order ?? 0)) + 1
+    const newTask = {
+      id: uid(),
+      text: idea.text,
+      category: 'その他',
+      member: idea.author,
+      priority: 'B',
+      due: '',
+      done: false,
+      createdAt: Date.now(),
+      order: nextOrder,
+      fromIdeaId: idea.id,
+    }
+    setTasks([newTask, ...tasks])
+    setAddedFlash(idea.id)
+    setTimeout(() => setAddedFlash(null), 1500)
+  }
 
   const sorted = [...ideas].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.createdAt - a.createdAt)
 
@@ -55,7 +76,14 @@ export default function Ideas({ currentUser }) {
               <div className="idea-text">{i.text}</div>
               <div className="idea-meta">
                 <span>{i.author}　{new Date(i.createdAt).toLocaleDateString('ja-JP')}</span>
-                <div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <button
+                    className="btn btn-small"
+                    onClick={() => sendToTasks(i)}
+                    title="このアイデアをタスクに追加"
+                  >
+                    {addedFlash === i.id ? '✓ 追加済' : '＋ タスクに追加'}
+                  </button>
                   <button className="btn-icon" onClick={() => togglePin(i.id)} title={i.pinned ? '固定解除' : '固定'}>
                     {i.pinned ? '★' : '☆'}
                   </button>

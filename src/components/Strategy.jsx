@@ -14,7 +14,23 @@ function emptyEntry() {
   return { strategy: '', tactics: [] }
 }
 
+const DEFAULT_OVERALL = {
+  strategy:
+    '志村直紀という人間そのものが起点。\n' +
+    '理学療法士 × 整体師 × 健康食品 × 経営者の4軸で唯一無二のポジションを築き、\n' +
+    '「売上 → 認知 → 仕組み」の順番で迷わずやり切る。',
+  tactics:
+    '① 売上を作る（最優先）\n' +
+    '② 認知を広げる（毎日コツコツ）\n' +
+    '③ 仕組みを作る（並行して少しずつ）\n' +
+    '\n' +
+    '・月商110万円のラインを早期に確立\n' +
+    '・SNS と LINE で「お客様の変化」を中心に発信\n' +
+    '・属人化させず、再現できる型に落とし込む',
+}
+
 export default function Strategy() {
+  const [overall, setOverall] = useLocalStorage('tf_strategy_overall', DEFAULT_OVERALL)
   const [data, setData] = useLocalStorage('tf_strategies', DEFAULT_STRATEGIES)
   const [drafts, setDrafts] = useState({})
 
@@ -22,6 +38,9 @@ export default function Strategy() {
   useEffect(() => {
     if (data && typeof data === 'object' && Object.keys(data).length === 0) {
       setData(DEFAULT_STRATEGIES)
+    }
+    if (overall && typeof overall === 'object' && !overall.strategy && !overall.tactics) {
+      setOverall(DEFAULT_OVERALL)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -73,6 +92,38 @@ export default function Strategy() {
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.7 }}>
         🧭 <strong>戦略</strong>は「大きな方向性・なぜそれをやるのか」、
         ⚙️ <strong>戦術</strong>は「具体的にいつ・なにをやるか」を分けて書き留めます。
+      </div>
+
+      <div className="strategy-card strategy-overall">
+        <div className="strategy-card-header" style={{ borderLeftColor: 'var(--accent)' }}>
+          <div className="strategy-cat-name">
+            <span style={{ fontSize: 22, marginRight: 8 }}>🌐</span>
+            全体の戦略・戦術
+          </div>
+          <div className="strategy-cat-count">マイページに表示</div>
+        </div>
+        <div className="strategy-body">
+          <div className="strategy-block">
+            <div className="strategy-block-label">🧭 全体の戦略</div>
+            <textarea
+              className="textarea"
+              style={{ minHeight: 120, fontSize: 14 }}
+              placeholder="事業全体としての方向性・哲学・大きな勝ち筋..."
+              value={overall.strategy || ''}
+              onChange={ev => setOverall({ ...overall, strategy: ev.target.value })}
+            />
+          </div>
+          <div className="strategy-block">
+            <div className="strategy-block-label">⚙️ 全体の戦術</div>
+            <textarea
+              className="textarea"
+              style={{ minHeight: 120, fontSize: 14 }}
+              placeholder="今やること・優先順位・具体的アクション..."
+              value={overall.tactics || ''}
+              onChange={ev => setOverall({ ...overall, tactics: ev.target.value })}
+            />
+          </div>
+        </div>
       </div>
 
       {STRATEGY_CATEGORIES.map(cat => {
