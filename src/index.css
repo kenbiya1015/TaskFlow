@@ -1,0 +1,88 @@
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --border-strong: #cdd2da;
+  --text: #1f2430;
+  --text-soft: #4a5160;
+  --text-muted: #828a98;
+  --accent: #2f6fed;
+  --accent-soft: #e8f0ff;
+  --accent-deep: #1f56c4;
+  --success: #1f9e6a;
+  --warning: #d97706;
+  --danger: #d43f3f;
+  --info: #4a78c2;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --shadow-strong: 0 4px 14px rgba(15, 23, 42, 0.08);
+
+  /* legacy aliases (existing components still reference these names) */
+  --washi-base: var(--bg);
+  --washi-light: var(--surface);
+  --washi-dark: var(--surface-2);
+  --sumi: var(--text);
+  --sumi-soft: var(--text-soft);
+  --cha-deep: var(--text);
+  --cha: var(--text-soft);
+  --cha-light: var(--text-muted);
+  --cha-pale: var(--border);
+  --ochre: var(--warning);
+  --vermillion: var(--danger);
+  --moss: var(--success);
+  --indigo: var(--info);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-2);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
