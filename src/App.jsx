@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
-import { useLocalStorage } from './hooks/useLocalStorage'
+import { useLocalStorage, useUserScopedStorage } from './hooks/useLocalStorage'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
 import { initCloudSync, getSyncStatus, STATUS_EVENT } from './lib/cloudSync'
@@ -46,7 +46,15 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (currentUser) setPage('home')
+    if (!currentUser) return
+    // ユーザーごとのデフォルトページを読み込んで表示
+    try {
+      const all = JSON.parse(window.localStorage.getItem('tf_default_page_by_user') || '{}')
+      const dp = all[currentUser] || 'home'
+      setPage(dp)
+    } catch {
+      setPage('home')
+    }
   }, [currentUser])
 
   if (!currentUser) {
@@ -62,12 +70,12 @@ export default function App() {
       case 'tasks':    return <TaskList currentUser={currentUser} />
       case 'members':  return <Members currentUser={currentUser} />
       case 'ideas':    return <Ideas currentUser={currentUser} />
-      case 'sns':      return <SNS />
+      case 'sns':      return <SNS currentUser={currentUser} />
       case 'mt':       return <MTMemo currentUser={currentUser} />
-      case 'goals':    return <Goals />
+      case 'goals':    return <Goals currentUser={currentUser} />
       case 'being':    return <BeingGoals currentUser={currentUser} />
-      case 'future':   return <FuturePlans />
-      case 'strategy': return <Strategy />
+      case 'future':   return <FuturePlans currentUser={currentUser} />
+      case 'strategy': return <Strategy currentUser={currentUser} />
       case 'settings': return (
         <Settings
           currentUser={currentUser}

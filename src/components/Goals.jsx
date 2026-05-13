@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const DEFAULT_VISION = {
   purpose: '健康と美しさを通じて、人の人生に静かな喜びを届ける。',
@@ -10,10 +10,10 @@ const DEFAULT_VISION = {
 
 const DEFAULT_YEARS = ['2026', '2027', '2028', '2029', '2030', '5年後', '10年後']
 
-export default function Goals() {
-  const [vision, setVision] = useLocalStorage('tf_vision', DEFAULT_VISION)
-  const [yearGoals, setYearGoals] = useLocalStorage('tf_yearGoals', {})
-  const [years, setYears] = useLocalStorage('tf_goalYears', DEFAULT_YEARS)
+export default function Goals({ currentUser }) {
+  const [vision, setVision] = useUserScopedStorage('tf_vision_by_user', currentUser, DEFAULT_VISION)
+  const [yearGoals, setYearGoals] = useUserScopedStorage('tf_yearGoals_by_user', currentUser, {})
+  const [years, setYears] = useUserScopedStorage('tf_goalYears_by_user', currentUser, DEFAULT_YEARS)
 
   const [drafts, setDrafts] = useState({})
   const [newYear, setNewYear] = useState('')

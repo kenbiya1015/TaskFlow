@@ -62,3 +62,32 @@ export function useLocalStorage(key, initialValue) {
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
+
+// ユーザー別データ用ヘルパー
+// ──────────────────────────────────────────────
+// 集約キー（例: tf_tasks_by_user）に { [user]: data } で保存し、
+// 各コンポーネントから見ると useLocalStorage と同じ API でユーザー固有データを扱える。
+//
+// 使い方:
+//   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
+//   // tasks は currentUser のタスクのみ
+//   setTasks([...]) // currentUser のスロットだけ更新される
+//
+// 注意：複数ユーザーの同時編集は last-write-wins になります。
+// 通常運用では Realtime 同期で十分緩和されますが、稀に競合が起きえます。
+export function useUserScopedStorage(aggKey, user, initialValue) {
+  const [all, setAll] = useLocalStorage(aggKey, {})
+  const value = (all && user && all[user] !== undefined) ? all[user] : initialValue
+
+  const setValue = (next) => {
+    if (!user) return
+    setAll(prev => {
+      const safePrev = (prev && typeof prev === 'object') ? prev : {}
+      const current = safePrev[user] !== undefined ? safePrev[user] : initialValue
+      const updated = typeof next === 'function' ? next(current) : next
+      return { ...safePrev, [user]: updated }
+    })
+  }
+
+  return [value, setValue]
+}

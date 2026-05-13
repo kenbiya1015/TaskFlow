@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const TIMEFRAMES = ['短期（〜3ヶ月）', '中期（〜1年）', '長期（〜3年）']
 const CATEGORIES = ['事業', '組織', '個人', '商品・サービス', 'ブランド']
 
-export default function FuturePlans() {
-  const [items, setItems] = useLocalStorage('tf_future', [])
+export default function FuturePlans({ currentUser }) {
+  const [items, setItems] = useUserScopedStorage('tf_future_by_user', currentUser, [])
   const [filter, setFilter] = useState('全て')
 
   const [text, setText] = useState('')

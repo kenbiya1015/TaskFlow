@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { MEMBER_NAMES } from '../members'
 
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
@@ -8,10 +8,10 @@ const MEMBERS = MEMBER_NAMES
 const NO_PARTNER = '__none__'
 
 export default function MTMemo({ currentUser }) {
-  const [memos, setMemos] = useLocalStorage('tf_mtmemos', [])
-  const [tasks, setTasks] = useLocalStorage('tf_tasks', [])
-  const [ideas, setIdeas] = useLocalStorage('tf_ideas', [])
-  const [partners, setPartners] = useLocalStorage('tf_partners', [])
+  const [memos, setMemos] = useUserScopedStorage('tf_mtmemos_by_user', currentUser, [])
+  const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
+  const [ideas, setIdeas] = useUserScopedStorage('tf_ideas_by_user', currentUser, [])
+  const [partners, setPartners] = useUserScopedStorage('tf_partners_by_user', currentUser, [])
 
   const [tab, setTab] = useState('memos')
 

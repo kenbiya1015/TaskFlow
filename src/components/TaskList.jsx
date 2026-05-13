@@ -1,9 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
-import { MEMBER_NAMES } from '../members'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const CATEGORIES = ['全て', '健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
-const MEMBERS = MEMBER_NAMES
 const PRIORITY_OPTIONS = ['A', 'B', 'C', 'D']
 
 // 旧形式 高/中/低 → A/B/C への互換変換
@@ -34,15 +32,13 @@ function dueStatus(due) {
 }
 
 export default function TaskList({ currentUser }) {
-  const [tasks, setTasks] = useLocalStorage('tf_tasks', [])
+  const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [filter, setFilter] = useState('全て')
-  const [memberFilter, setMemberFilter] = useState(currentUser || '全員')
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
 
   const [newText, setNewText] = useState('')
   const [newCat, setNewCat] = useState('健美屋')
-  const [newMember, setNewMember] = useState(currentUser || MEMBERS[0])
   const [newPriority, setNewPriority] = useState('B')
   const [newDue, setNewDue] = useState('')
 
@@ -73,7 +69,7 @@ export default function TaskList({ currentUser }) {
         id: uid(),
         text: newText.trim(),
         category: newCat,
-        member: newMember,
+        member: currentUser,
         priority: newPriority,
         due: newDue,
         done: false,
@@ -107,14 +103,13 @@ export default function TaskList({ currentUser }) {
   const filtered = useMemo(() => {
     return tasks
       .filter(t => filter === '全て' || t.category === filter)
-      .filter(t => memberFilter === '全員' || t.member === memberFilter)
       .sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1
         const ao = a.order ?? Number.MAX_SAFE_INTEGER
         const bo = b.order ?? Number.MAX_SAFE_INTEGER
         return ao - bo
       })
-  }, [tasks, filter, memberFilter])
+  }, [tasks, filter])
 
   const stats = useMemo(() => {
     const open = tasks.filter(t => !t.done)
@@ -131,12 +126,8 @@ export default function TaskList({ currentUser }) {
       <div className="page-header">
         <div>
           <div className="page-title">タスク一覧</div>
-          <div className="page-subtitle">TASK　LIST　·　ドラッグで並び替え</div>
+          <div className="page-subtitle">{currentUser} さんのタスク　·　ドラッグで並び替え</div>
         </div>
-        <select className="select" value={memberFilter} onChange={e => setMemberFilter(e.target.value)}>
-          <option>全員</option>
-          {MEMBERS.map(m => <option key={m}>{m}</option>)}
-        </select>
       </div>
 
       <div className="stats-bar">
@@ -158,9 +149,6 @@ export default function TaskList({ currentUser }) {
           />
           <select className="select" value={newCat} onChange={e => setNewCat(e.target.value)}>
             {CATEGORIES.filter(c => c !== '全て').map(c => <option key={c}>{c}</option>)}
-          </select>
-          <select className="select" value={newMember} onChange={e => setNewMember(e.target.value)}>
-            {MEMBERS.map(m => <option key={m}>{m}</option>)}
           </select>
           <select className="select" value={newPriority} onChange={e => setNewPriority(e.target.value)}>
             {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}（{PRIORITY_LABELS[p]}）</option>)}
@@ -229,7 +217,6 @@ export default function TaskList({ currentUser }) {
                 <input type="checkbox" className="task-check" checked={t.done} onChange={() => toggle(t.id)} />
                 <div className="task-text">{t.text}</div>
                 <span className={`tag tag-${t.category}`}>{t.category}</span>
-                <span className="task-meta">{t.member}</span>
                 <select
                   className={`priority-badge priority-${pri}`}
                   value={pri}

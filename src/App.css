@@ -1679,6 +1679,75 @@
   50%      { opacity: 0.6; }
 }
 
+/* ===== マージ済みスケジュール（GCal + 手動入力） ===== */
+.merged-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.merged-schedule-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border-left: 3px solid var(--border-strong);
+  font-size: 13px;
+}
+
+.merged-schedule-row.src-gcal {
+  background: #ecfdf5;
+  border-left-color: var(--accent);
+}
+
+.merged-schedule-row.src-manual {
+  background: #eff6ff;
+  border-left-color: var(--accent-2);
+}
+
+.merged-schedule-time {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.merged-schedule-mark {
+  margin-right: 4px;
+}
+
+.merged-schedule-text {
+  color: var(--text);
+}
+
+/* ===== ルーチン編集行 ===== */
+.routine-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* ===== ロードマップ編集行 ===== */
+.roadmap-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.roadmap-row {
+  transition: background 0.15s;
+}
+
+.roadmap-row:hover {
+  background: var(--accent-soft);
+}
+
 /* ===== 自動バックアップ履歴（設定画面） ===== */
 .backup-list {
   display: flex;
@@ -2063,9 +2132,102 @@
 }
 
 @media (max-width: 768px) {
-  .sidebar { width: 64px; padding: 12px 0; }
-  .sidebar-title, .sidebar-subtitle, .sidebar-user-info,
-  .nav-item span:not(.nav-icon) { display: none; }
-  .nav-item { justify-content: center; padding: 12px 8px; }
-  .main { padding: 20px; }
+  /* スマホ：サイドバーを上部の横スクロールバーに */
+  .app {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 8px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 10px 0 4px;
+    margin: 0;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sidebar-title { font-size: 16px; }
+  .sidebar-subtitle { font-size: 9px; letter-spacing: 0.2em; }
+  .sidebar-user {
+    display: flex;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    padding: 0 10px 0 4px;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .sidebar-avatar { width: 34px; height: 34px; font-size: 13px; }
+  .sidebar-user-info {
+    display: none; /* 名前テキストは隠してアバターのみ */
+  }
+  .sidebar nav {
+    flex: 1;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0;
+    gap: 4px;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar nav::-webkit-scrollbar { height: 4px; }
+  .nav-item {
+    flex-direction: column;
+    align-items: center;
+    min-width: 64px;
+    padding: 6px 8px;
+    font-size: 10px;
+    gap: 2px;
+    flex-shrink: 0;
+    box-shadow: none !important;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .nav-item.active {
+    box-shadow: inset 0 -2px 0 var(--accent) !important;
+    background: var(--accent-soft);
+  }
+  .nav-icon { font-size: 18px; width: auto; }
+
+  .cloud-indicator {
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 10px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* メイン領域 */
+  .main { padding: 16px; }
+
+  /* グリッドはモバイルで1カラム化（既に他の @media にあるけど念のため） */
+  .home-grid { grid-template-columns: 1fr; }
+  .schedule-container { grid-template-columns: 1fr; }
+  .schedule-2col { grid-template-columns: 1fr; }
+  .strategy-body { grid-template-columns: 1fr; }
+  .overall-grid { grid-template-columns: 1fr; }
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+
+  /* ページヘッダーをコンパクト */
+  .page-title { font-size: 20px; }
+  .home-greeting { font-size: 20px; }
+
+  /* テキストインプットは少し小さく */
+  .text-input, .select, .textarea { font-size: 13px; padding: 8px 10px; }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { DEFAULT_STRATEGIES } from '../data/strategyDefaults'
 
 export const STRATEGY_CATEGORIES = [
@@ -29,9 +29,9 @@ const DEFAULT_OVERALL = {
     '・属人化させず、再現できる型に落とし込む',
 }
 
-export default function Strategy() {
-  const [overall, setOverall] = useLocalStorage('tf_strategy_overall', DEFAULT_OVERALL)
-  const [data, setData] = useLocalStorage('tf_strategies', DEFAULT_STRATEGIES)
+export default function Strategy({ currentUser }) {
+  const [overall, setOverall] = useUserScopedStorage('tf_strategy_overall_by_user', currentUser, DEFAULT_OVERALL)
+  const [data, setData] = useUserScopedStorage('tf_strategies_by_user', currentUser, DEFAULT_STRATEGIES)
   const [drafts, setDrafts] = useState({})
 
   // 既存ユーザーが空オブジェクト {} を持っている場合のみ、初期データを投入する

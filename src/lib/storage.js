@@ -23,27 +23,46 @@
 
 export const DATA_KEYS = [
   'tf_currentUser',
-  'tf_tasks',
+  'tf_members',
   'tf_schedule',
+  // ▼ 個人別データ（_by_user 形式：{user: data}）
+  'tf_tasks_by_user',
+  'tf_ideas_by_user',
+  'tf_sns_by_user',
+  'tf_mtmemos_by_user',
+  'tf_partners_by_user',
+  'tf_future_by_user',
+  'tf_strategies_by_user',
+  'tf_strategy_overall_by_user',
+  'tf_yearGoals_by_user',
+  'tf_goalYears_by_user',
+  'tf_vision_by_user',
+  'tf_being',
+  'tf_routine_items_by_user',
+  'tf_roadmap_by_user',
+  'tf_current_phase_by_user',
+  'tf_daily_routine_by_user',
+  'tf_default_page_by_user',
+  // ▼ 旧キー（互換のため残す。マイグレーション後は読み込まれない）
+  'tf_tasks',
   'tf_ideas',
   'tf_sns',
   'tf_mtmemos',
   'tf_partners',
-  'tf_members',
   'tf_yearGoals',
   'tf_goalYears',
   'tf_vision',
-  'tf_being',
   'tf_future',
   'tf_strategies',
   'tf_strategy_overall',
   'tf_daily_routine',
+  // ▼ その他
   'tf_gcal_clientId',
-  // 認証トークン（tf_gcal_user_tokens）はエクスポート対象外（セキュリティ）
   'tf_gcal_user_events',
+  // 認証トークン（tf_gcal_user_tokens）はエクスポート対象外（セキュリティ）
 ]
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 const VERSION_KEY = 'tf_schemaVersion'
 
 // 自動バックアップ関連
@@ -132,6 +151,7 @@ export function runMigrations() {
   if (current >= SCHEMA_VERSION) return
   if (current < 2) migrateV1toV2()
   if (current < 3) migrateV2toV3()
+  if (current < 4) migrateV3toV4()
   window.localStorage.setItem(VERSION_KEY, String(SCHEMA_VERSION))
 }
 
@@ -211,6 +231,104 @@ function migrateV2toV3() {
       window.localStorage.removeItem('tf_gcal_events')
     }
   } catch { /* ignore */ }
+}
+
+/**
+ * V3 → V4: すべての主要データをユーザー別構造へ移行
+ *
+ * 旧                            → 新（{ [user]: data }）
+ *   tf_tasks       (array)        tf_tasks_by_user     （member でグルーピング）
+ *   tf_ideas       (array)        tf_ideas_by_user     （author でグルーピング）
+ *   tf_sns         (array)        tf_sns_by_user       （現在ユーザーへ）
+ *   tf_mtmemos     (array)        tf_mtmemos_by_user
+ *   tf_partners    (array)        tf_partners_by_user
+ *   tf_future      (array)        tf_future_by_user
+ *   tf_strategies  (object)       tf_strategies_by_user[user]
+ *   tf_strategy_overall (object)  tf_strategy_overall_by_user[user]
+ *   tf_yearGoals  / tf_goalYears / tf_vision → 同じく _by_user に
+ *
+ * 旧キーは互換のため残します（読み捨て）。問題なければ将来削除可能。
+ */
+function migrateV3toV4() {
+  let currentUser = '志村直紀'
+  try {
+    const cu = JSON.parse(window.localStorage.getItem('tf_currentUser') || 'null')
+    if (cu && typeof cu === 'string') currentUser = cu
+  } catch {}
+
+  const fallbackUser = currentUser
+
+  // 配列を field でグルーピングして _by_user 化
+  const groupArrayByField = (oldKey, newKey, field) => {
+    if (window.localStorage.getItem(newKey)) return
+    try {
+      const raw = window.localStorage.getItem(oldKey)
+      if (!raw) return
+      const arr = JSON.parse(raw)
+      if (!Array.isArray(arr) || arr.length === 0) return
+      const byUser = {}
+      arr.forEach(item => {
+        const u = (item && item[field]) || fallbackUser
+        if (!byUser[u]) byUser[u] = []
+        byUser[u].push(item)
+      })
+      window.localStorage.setItem(newKey, JSON.stringify(byUser))
+    } catch { /* ignore */ }
+  }
+
+  // 配列を全て fallbackUser 配下に
+  const wrapArrayUnderUser = (oldKey, newKey) => {
+    if (window.localStorage.getItem(newKey)) return
+    try {
+      const raw = window.localStorage.getItem(oldKey)
+      if (!raw) return
+      const arr = JSON.parse(raw)
+      if (!Array.isArray(arr) || arr.length === 0) return
+      window.localStorage.setItem(newKey, JSON.stringify({ [fallbackUser]: arr }))
+    } catch {}
+  }
+
+  // オブジェクトを fallbackUser 配下に
+  const wrapObjectUnderUser = (oldKey, newKey) => {
+    if (window.localStorage.getItem(newKey)) return
+    try {
+      const raw = window.localStorage.getItem(oldKey)
+      if (!raw) return
+      const v = JSON.parse(raw)
+      if (v == null) return
+      window.localStorage.setItem(newKey, JSON.stringify({ [fallbackUser]: v }))
+    } catch {}
+  }
+
+  groupArrayByField('tf_tasks',  'tf_tasks_by_user',  'member')
+  groupArrayByField('tf_ideas',  'tf_ideas_by_user',  'author')
+
+  wrapArrayUnderUser('tf_sns',      'tf_sns_by_user')
+  wrapArrayUnderUser('tf_mtmemos',  'tf_mtmemos_by_user')
+  wrapArrayUnderUser('tf_partners', 'tf_partners_by_user')
+  wrapArrayUnderUser('tf_future',   'tf_future_by_user')
+  wrapArrayUnderUser('tf_goalYears','tf_goalYears_by_user')
+
+  wrapObjectUnderUser('tf_strategies',        'tf_strategies_by_user')
+  wrapObjectUnderUser('tf_strategy_overall',  'tf_strategy_overall_by_user')
+  wrapObjectUnderUser('tf_yearGoals',         'tf_yearGoals_by_user')
+  wrapObjectUnderUser('tf_vision',            'tf_vision_by_user')
+
+  // 旧 tf_daily_routine（{date: {key: bool}}）→ tf_daily_routine_by_user[user][date][key]
+  if (!window.localStorage.getItem('tf_daily_routine_by_user')) {
+    try {
+      const raw = window.localStorage.getItem('tf_daily_routine')
+      if (raw) {
+        const v = JSON.parse(raw)
+        if (v && typeof v === 'object') {
+          window.localStorage.setItem(
+            'tf_daily_routine_by_user',
+            JSON.stringify({ [fallbackUser]: v }),
+          )
+        }
+      }
+    } catch {}
+  }
 }
 
 // ──────────────────────────────────────────────

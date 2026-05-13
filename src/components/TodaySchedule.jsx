@@ -1,7 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { requestAccessToken, fetchEvents, revokeToken } from '../lib/googleCalendar'
 import { GCAL_CLIENT_ID } from '../config'
+
+function normalizePriority(p) {
+  if (p === '高') return 'A'
+  if (p === '中') return 'B'
+  if (p === '低') return 'C'
+  if (['A', 'B', 'C', 'D'].includes(p)) return p
+  return 'C'
+}
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6)
 
@@ -44,7 +52,7 @@ function fmtTimeRange(ev) {
 
 export default function TodaySchedule({ currentUser }) {
   const [schedule, setSchedule] = useLocalStorage('tf_schedule', {})
-  const [tasks] = useLocalStorage('tf_tasks', [])
+  const [tasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
 
   // Google Calendar state（ユーザーごとに分離）
   const [clientIdOverride, setClientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
@@ -159,8 +167,8 @@ export default function TodaySchedule({ currentUser }) {
   }
 
   const userTasks = useMemo(
-    () => tasks.filter(t => t.member === currentUser && !t.done),
-    [tasks, currentUser]
+    () => tasks.filter(t => !t.done),
+    [tasks]
   )
 
   const deleteEntry = (dateK, hour, id) => {
@@ -328,23 +336,37 @@ function ScheduleSection({ label, emoji, date, dateK, daySchedule, gcal, userTas
               未完了のタスクはありません
             </div>
           ) : (
-            userTasks.map(t => (
-              <div key={t.id} className="schedule-task-row">
-                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span className={`tag tag-${t.category}`} style={{ marginRight: 4 }}>{t.category}</span>
-                  {t.text}
-                </div>
-                <select
-                  value={pickHour[t.id] || 9}
-                  onChange={e => setPickHour({ ...pickHour, [t.id]: Number(e.target.value) })}
-                >
-                  {PICK_HOURS.map(h => (
-                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                  ))}
-                </select>
-                <button onClick={() => addFromTask(t)}>＋ 追加</button>
-              </div>
-            ))
+            [...userTasks]
+              .sort((a, b) => {
+                const ord = { A: 0, B: 1, C: 2, D: 3 }
+                const ap = ord[normalizePriority(a.priority)] ?? 9
+                const bp = ord[normalizePriority(b.priority)] ?? 9
+                if (ap !== bp) return ap - bp
+                return (a.order ?? 0) - (b.order ?? 0)
+              })
+              .map(t => {
+                const pri = normalizePriority(t.priority)
+                return (
+                  <div key={t.id} className="schedule-task-row">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                      <span className={`priority-badge priority-${pri}`} style={{ minWidth: 22, height: 20, fontSize: 11 }}>{pri}</span>
+                      <span className={`tag tag-${t.category}`}>{t.category}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {t.text}
+                      </span>
+                    </div>
+                    <select
+                      value={pickHour[t.id] || 9}
+                      onChange={e => setPickHour({ ...pickHour, [t.id]: Number(e.target.value) })}
+                    >
+                      {PICK_HOURS.map(h => (
+                        <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
+                    <button onClick={() => addFromTask(t)}>＋ 追加</button>
+                  </div>
+                )
+              })
           )}
         </div>
       )}

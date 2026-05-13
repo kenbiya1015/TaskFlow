@@ -1,17 +1,15 @@
 import { useState } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
-import { MEMBER_NAMES } from '../members'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 export default function Ideas({ currentUser }) {
-  const [ideas, setIdeas] = useLocalStorage('tf_ideas', [])
-  const [tasks, setTasks] = useLocalStorage('tf_tasks', [])
+  const [ideas, setIdeas] = useUserScopedStorage('tf_ideas_by_user', currentUser, [])
+  const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [text, setText] = useState('')
-  const [author, setAuthor] = useState(currentUser || MEMBER_NAMES[0])
   const [addedFlash, setAddedFlash] = useState(null)
 
   const add = () => {
     if (!text.trim()) return
-    setIdeas([{ id: uid(), text: text.trim(), author, pinned: false, createdAt: Date.now() }, ...ideas])
+    setIdeas([{ id: uid(), text: text.trim(), author: currentUser, pinned: false, createdAt: Date.now() }, ...ideas])
     setText('')
   }
 
@@ -24,7 +22,7 @@ export default function Ideas({ currentUser }) {
       id: uid(),
       text: idea.text,
       category: 'その他',
-      member: idea.author,
+      member: currentUser,
       priority: 'B',
       due: '',
       done: false,
@@ -57,9 +55,6 @@ export default function Ideas({ currentUser }) {
           onChange={e => setText(e.target.value)}
         />
         <div className="form-row" style={{ marginTop: 10 }}>
-          <select className="select" value={author} onChange={e => setAuthor(e.target.value)}>
-            {MEMBER_NAMES.map(m => <option key={m}>{m}</option>)}
-          </select>
           <button className="btn" onClick={add}>書き留める</button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useLocalStorage, useUserScopedStorage } from '../hooks/useLocalStorage'
 import { MEMBERS } from '../members'
 import {
   downloadExport,
@@ -22,8 +22,22 @@ import {
 import { SUPABASE_URL } from '../lib/supabase'
 import { GCAL_CLIENT_ID } from '../config'
 
+const PAGE_OPTIONS = [
+  { id: 'home',     label: '🏠 マイページ' },
+  { id: 'schedule', label: '📅 スケジュール' },
+  { id: 'tasks',    label: '✅ タスク一覧' },
+  { id: 'ideas',    label: '💡 アイデア' },
+  { id: 'sns',      label: '📱 SNS' },
+  { id: 'mt',       label: '📝 MT' },
+  { id: 'goals',    label: '🎯 目標' },
+  { id: 'being',    label: '🌟 なりたい自分' },
+  { id: 'future',   label: '🚀 今後の取り組み' },
+  { id: 'strategy', label: '📋 戦略・戦術' },
+]
+
 export default function Settings({ currentUser, onChangeUser, onLogout }) {
   const [members, setMembers] = useLocalStorage('tf_members', MEMBERS)
+  const [defaultPage, setDefaultPage] = useUserScopedStorage('tf_default_page_by_user', currentUser, 'home')
   const fileRef = useRef(null)
   const [importInfo, setImportInfo] = useState('')
   const [importError, setImportError] = useState('')
@@ -210,6 +224,26 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
             {MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}（{m.role}）</option>)}
           </select>
           <button className="btn btn-secondary" onClick={onLogout}>ログアウト</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">🏠 デフォルト表示ページ</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
+          {currentUser} さんがログインした時に最初に開くページを選択できます。
+        </div>
+        <div className="form-row" style={{ margin: 0 }}>
+          <select
+            className="select"
+            value={defaultPage}
+            onChange={e => setDefaultPage(e.target.value)}
+            style={{ minWidth: 220 }}
+          >
+            {PAGE_OPTIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+            次回ログイン時から反映されます
+          </span>
         </div>
       </div>
 

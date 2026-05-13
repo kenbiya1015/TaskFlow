@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const ACCOUNTS = [
   { id: 'shimura', name: '志村アカウント', desc: '志村直紀 個人発信 ／ 想い・哲学・日常' },
@@ -17,8 +17,8 @@ const STATUS_LABELS = {
 
 const ALL = '__all__'
 
-export default function SNS() {
-  const [posts, setPosts] = useLocalStorage('tf_sns', [])
+export default function SNS({ currentUser }) {
+  const [posts, setPosts] = useUserScopedStorage('tf_sns_by_user', currentUser, [])
   const [activeAccount, setActiveAccount] = useState('shimura')
   const [text, setText] = useState('')
   const [status, setStatus] = useState('アイデア')

@@ -1,20 +1,8 @@
-import { useMemo, useEffect, useState, useRef } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useMemo, useEffect, useState } from 'react'
+import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
 import { fetchEvents } from '../lib/googleCalendar'
-import {
-  downloadExport,
-  importAll,
-  autoBackup,
-  listAutoBackups,
-} from '../lib/storage'
-import {
-  getSyncStatus,
-  uploadAllLocal,
-  pullAll,
-  STATUS_EVENT,
-} from '../lib/cloudSync'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -33,14 +21,6 @@ function fmtEventTime(ev) {
   const pad = n => String(n).padStart(2, '0')
   const f = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`
   return e ? `${f(s)}–${f(e)}` : f(s)
-}
-
-function greeting() {
-  const h = new Date().getHours()
-  if (h < 5) return 'こんばんは'
-  if (h < 11) return 'おはようございます'
-  if (h < 18) return 'こんにちは'
-  return 'おつかれさまです'
 }
 
 function normalizePriority(p) {
@@ -63,48 +43,38 @@ function dueStatus(due) {
 }
 
 export default function Home({ userName, onNavigate }) {
-  const [tasks] = useLocalStorage('tf_tasks', [])
+  // 個人別データ
+  const [tasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
+  const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
+  const [memos] = useUserScopedStorage('tf_mtmemos_by_user', userName, [])
+  const [overall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, { strategy: '', tactics: '' })
+  const [futures] = useUserScopedStorage('tf_future_by_user', userName, [])
+  const [routineItems, setRoutineItems] = useUserScopedStorage('tf_routine_items_by_user', userName, DAILY_ROUTINE)
+  const [roadmapItems, setRoadmapItems] = useUserScopedStorage('tf_roadmap_by_user', userName, ROADMAP)
+  const [currentPhase, setCurrentPhase] = useUserScopedStorage('tf_current_phase_by_user', userName, CURRENT_PHASE_KEY)
+  const [routineLog, setRoutineLog] = useUserScopedStorage('tf_daily_routine_by_user', userName, {})
+
+  // 共有データ
   const [schedule] = useLocalStorage('tf_schedule', {})
-  const [ideas] = useLocalStorage('tf_ideas', [])
-  const [memos] = useLocalStorage('tf_mtmemos', [])
-  const [overall] = useLocalStorage('tf_strategy_overall', { strategy: '', tactics: '' })
   const [being] = useLocalStorage('tf_being', {})
-  const [futures] = useLocalStorage('tf_future', [])
-  const [routineLog, setRoutineLog] = useLocalStorage('tf_daily_routine', {})
   const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
 
   const member = findMember(userName)
   const today = todayKey()
 
-  // 1週間分の日付キー
-  const weekDays = useMemo(() => {
-    const out = []
-    const base = new Date(); base.setHours(0, 0, 0, 0)
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(base); d.setDate(d.getDate() + i)
-      out.push({
-        key: dateKeyOf(d),
-        date: d,
-        label: i === 0 ? '今日' : i === 1 ? '明日' : `${d.getMonth() + 1}/${d.getDate()}`,
-        wday: WEEK_DAYS_JP[d.getDay()],
-      })
-    }
-    return out
-  }, [])
-
   const myToken = allTokens[userName] || null
   const tokenValid = myToken && myToken.access_token && myToken.expires_at > Date.now()
   const myEvents = allEvents[userName] || {}
   const [gcalBusy, setGcalBusy] = useState(false)
 
-  // 有効なトークンがあれば、マイページ表示時に1週間分を自動同期
+  // 有効なトークンがあれば、今日と明日のGCalを自動同期
   useEffect(() => {
     let cancelled = false
     if (!tokenValid) return
     setGcalBusy(true)
     const from = new Date(); from.setHours(0, 0, 0, 0)
-    const to = new Date(from); to.setDate(to.getDate() + 7)
+    const to = new Date(from); to.setDate(to.getDate() + 2)
     fetchEvents(myToken.access_token, from, to)
       .then(items => {
         if (cancelled) return
@@ -118,7 +88,10 @@ export default function Home({ userName, onNavigate }) {
         })
         setAllEvents(prev => {
           const userEvents = { ...(prev[userName] || {}) }
-          weekDays.forEach(d => { userEvents[d.key] = grouped[d.key] || [] })
+          const tomorrow = new Date(from); tomorrow.setDate(tomorrow.getDate() + 1)
+          const tkey = dateKeyOf(tomorrow)
+          userEvents[today] = grouped[today] || []
+          userEvents[tkey] = grouped[tkey] || []
           userEvents.__syncedAt = Date.now()
           return { ...prev, [userName]: userEvents }
         })
@@ -138,38 +111,69 @@ export default function Home({ userName, onNavigate }) {
 
   const myTasks = useMemo(
     () => tasks
-      .filter(t => t.member === userName && !t.done)
+      .filter(t => !t.done)
       .sort((a, b) => {
         const ao = a.order ?? Number.MAX_SAFE_INTEGER
         const bo = b.order ?? Number.MAX_SAFE_INTEGER
         return ao - bo
       })
       .slice(0, 8),
-    [tasks, userName]
+    [tasks]
   )
 
-  const myDoneCount = tasks.filter(t => t.member === userName && t.done).length
-  const myOpenCount = tasks.filter(t => t.member === userName && !t.done).length
+  const myDoneCount = tasks.filter(t => t.done).length
+  const myOpenCount = tasks.filter(t => !t.done).length
+  const myMemoCount = memos.length
 
-  const todayEntries = useMemo(() => {
-    const day = schedule[today]?.[userName] || {}
+  // 今日のスケジュール（GCal + 手動入力をマージ）
+  const todayScheduleItems = useMemo(() => {
     const list = []
+    // 手動入力
+    const day = schedule[today]?.[userName] || {}
     Object.keys(day).forEach(h => {
-      (day[h] || []).forEach(e => list.push({ hour: Number(h), text: e.text, id: e.id }))
+      (day[h] || []).forEach(e => list.push({
+        id: e.id,
+        hour: Number(h),
+        text: e.text,
+        source: 'manual',
+        category: e.category,
+      }))
     })
-    return list.sort((a, b) => a.hour - b.hour)
-  }, [schedule, today, userName])
+    // GCalイベント
+    const events = (myEvents[today] || []).filter(Boolean)
+    events.forEach(ev => {
+      let hour = 0
+      if (!ev.allDay && ev.start) {
+        const d = new Date(ev.start)
+        hour = d.getHours()
+      }
+      list.push({
+        id: `gcal-${ev.id}`,
+        hour,
+        text: ev.title,
+        source: 'gcal',
+        allDay: ev.allDay,
+        timeRange: fmtEventTime(ev),
+      })
+    })
+    return list.sort((a, b) => {
+      // 終日は先頭
+      if (a.allDay && !b.allDay) return -1
+      if (!a.allDay && b.allDay) return 1
+      return a.hour - b.hour
+    })
+  }, [schedule, myEvents, today, userName])
 
   const myIdeas = useMemo(
-    () => ideas.filter(i => i.author === userName).slice(0, 5),
-    [ideas, userName]
+    () => ideas.slice(0, 5),
+    [ideas]
   )
 
   // なりたい自分の実践（現在ユーザー）
   const myBeing = being[userName] || { description: '', items: [] }
   const myBeingItems = (myBeing.items || []).slice(0, 8)
 
-  // 今後の取り組み（最大8件）
+  // 今後の取り組み（最大6件）
   const futurePlans = useMemo(() =>
     [...futures]
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -177,7 +181,6 @@ export default function Home({ userName, onNavigate }) {
     [futures]
   )
 
-  const myMemoCount = memos.length
   const dt = new Date()
   const dateLabel = `${dt.getMonth() + 1}月${dt.getDate()}日（${WEEK_DAYS_JP[dt.getDay()]}）`
 
@@ -188,105 +191,57 @@ export default function Home({ userName, onNavigate }) {
       [today]: { ...todayRoutine, [key]: !todayRoutine[key] },
     })
   }
-  const routineDone = DAILY_ROUTINE.filter(r => todayRoutine[r.key]).length
+  const routineDone = (routineItems || []).filter(r => todayRoutine[r.key]).length
 
-  // データのエクスポート／インポート
-  const importInputRef = useRef(null)
-  const [dataMsg, setDataMsg] = useState('')
-  const [dataErr, setDataErr] = useState('')
-  const backups = listAutoBackups()
-  const latestBackup = backups[0]
+  // ルーチン編集
+  const [editingRoutine, setEditingRoutine] = useState(false)
+  const [newRoutineText, setNewRoutineText] = useState('')
+  const [newRoutineIcon, setNewRoutineIcon] = useState('📌')
 
-  // クラウド同期状態
-  const [cloudStatus, setCloudStatus] = useState(getSyncStatus())
-  const [cloudBusy, setCloudBusy] = useState(false)
-  const [cloudMsg, setCloudMsg] = useState('')
-  const [cloudErr, setCloudErr] = useState('')
-
-  useEffect(() => {
-    const handler = (e) => setCloudStatus(e.detail || getSyncStatus())
-    window.addEventListener(STATUS_EVENT, handler)
-    return () => window.removeEventListener(STATUS_EVENT, handler)
-  }, [])
-
-  const handleUpload = async () => {
-    setCloudErr(''); setCloudMsg('')
-    if (!confirm('現在の localStorage の全データを Supabase にアップロードします。\n（既にクラウド側にあるキーは上書きされます）\n続行しますか？')) return
-    setCloudBusy(true)
-    try {
-      const r = await uploadAllLocal()
-      setCloudMsg(`クラウドへ ${r.uploaded} 件アップロードしました`)
-    } catch (e) {
-      setCloudErr(`アップロード失敗: ${e.message || e}`)
-    } finally {
-      setCloudBusy(false)
-    }
+  const addRoutineItem = () => {
+    if (!newRoutineText.trim()) return
+    const item = { key: 'item-' + uid(), icon: newRoutineIcon, text: newRoutineText.trim() }
+    setRoutineItems([...(routineItems || []), item])
+    setNewRoutineText('')
+  }
+  const removeRoutineItem = (key) => {
+    setRoutineItems((routineItems || []).filter(r => r.key !== key))
+  }
+  const updateRoutineItem = (key, patch) => {
+    setRoutineItems((routineItems || []).map(r => r.key === key ? { ...r, ...patch } : r))
   }
 
-  const handleManualPull = async () => {
-    setCloudErr(''); setCloudMsg('')
-    setCloudBusy(true)
-    try {
-      const r = await pullAll()
-      if (r.ok) {
-        setCloudMsg(`同期しました（${r.updated} 件更新／${r.count} 件取得）`)
-      } else {
-        setCloudErr(`同期失敗: ${r.error}`)
-      }
-    } finally {
-      setCloudBusy(false)
-    }
+  // ロードマップ編集
+  const [editingRoadmap, setEditingRoadmap] = useState(false)
+  const [newPhaseLabel, setNewPhaseLabel] = useState('')
+  const [newPhaseGoal, setNewPhaseGoal] = useState('')
+
+  const addRoadmapItem = () => {
+    if (!newPhaseLabel.trim() || !newPhaseGoal.trim()) return
+    const item = { key: 'phase-' + uid(), phase: newPhaseLabel.trim(), goal: newPhaseGoal.trim() }
+    setRoadmapItems([...(roadmapItems || []), item])
+    setNewPhaseLabel('')
+    setNewPhaseGoal('')
   }
-
-  const handleExport = () => {
-    setDataMsg(''); setDataErr('')
-    try {
-      autoBackup({ force: true })
-      downloadExport()
-      setDataMsg(`データを書き出しました（${new Date().toLocaleString('ja-JP')}）`)
-    } catch (e) {
-      setDataErr(`エクスポート失敗: ${e.message || e}`)
-    }
+  const removeRoadmapItem = (key) => {
+    setRoadmapItems((roadmapItems || []).filter(r => r.key !== key))
   }
-
-  const handleImportClick = () => importInputRef.current?.click()
-
-  const handleImportFile = async (ev) => {
-    setDataMsg(''); setDataErr('')
-    const file = ev.target.files?.[0]
-    if (!file) return
-    if (!confirm('現在のデータと、選択した JSON ファイルの内容をマージして復元します。続行しますか？\n（既存データは温存され、空のキーだけ埋められます）')) {
-      ev.target.value = ''
-      return
-    }
-    try {
-      const text = await file.text()
-      const payload = JSON.parse(text)
-      autoBackup({ force: true })
-      importAll(payload, { merge: true })
-      setDataMsg('インポート完了。ページを再読み込みします...')
-      setTimeout(() => location.reload(), 800)
-    } catch (e) {
-      setDataErr(`インポート失敗: ${e.message || e}`)
-    } finally {
-      ev.target.value = ''
-    }
+  const updateRoadmapItem = (key, patch) => {
+    setRoadmapItems((roadmapItems || []).map(r => r.key === key ? { ...r, ...patch } : r))
   }
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <div className="home-greeting">
-            {greeting()}、{userName} さん
-          </div>
+          <div className="home-greeting">{userName} さん</div>
           <div className="page-subtitle">{dateLabel}　·　MY　HOME</div>
         </div>
         <div
           className="member-avatar"
           style={{
             width: 52, height: 52, fontSize: 20, marginBottom: 0,
-            background: `linear-gradient(135deg, ${member?.color || '#2f6fed'}, ${member?.color || '#2f6fed'}cc)`,
+            background: `linear-gradient(135deg, ${member?.color || '#0d9488'}, ${member?.color || '#0d9488'}cc)`,
           }}
         >
           {member?.initial || userName.slice(0, 1)}
@@ -303,7 +258,7 @@ export default function Home({ userName, onNavigate }) {
           <div className="stat-label">完了タスク</div>
         </div>
         <div className="stat-tile">
-          <div className="stat-num">{todayEntries.length}</div>
+          <div className="stat-num">{todayScheduleItems.length}</div>
           <div className="stat-label">今日の予定</div>
         </div>
         <div className="stat-tile">
@@ -312,10 +267,10 @@ export default function Home({ userName, onNavigate }) {
         </div>
       </div>
 
-      {/* 全体の戦略・戦術（戦略ページの最上部の内容） */}
+      {/* 全体の戦略・戦術 */}
       <div className="card overall-strategy-card">
         <div className="card-title">
-          🌐 全体の戦略・戦術
+          🌐 {userName} さんの全体戦略・戦術
           <button
             className="btn btn-small btn-secondary"
             style={{ float: 'right' }}
@@ -336,75 +291,6 @@ export default function Home({ userName, onNavigate }) {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="card cloud-sync-card">
-        <div className="card-title">
-          ☁ クラウド同期
-          <span style={{ float: 'right', fontSize: 11, fontWeight: 400 }}>
-            {!cloudStatus.online && <span className="cloud-pill cloud-pill-offline">オフライン</span>}
-            {cloudStatus.online && cloudStatus.connected && <span className="cloud-pill cloud-pill-online">● 接続中</span>}
-            {cloudStatus.online && !cloudStatus.connected && <span className="cloud-pill cloud-pill-connecting">接続待機中</span>}
-            {cloudStatus.pendingPushes > 0 && <span className="cloud-pill cloud-pill-pending">⇡ {cloudStatus.pendingPushes}</span>}
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
-          スマホ・PC・他メンバー間でリアルタイム同期されます。<br />
-          ワークスペース: <code>{cloudStatus.workspaceId}</code>
-          {cloudStatus.lastSyncAt && (
-            <>　·　最終同期: {new Date(cloudStatus.lastSyncAt).toLocaleString('ja-JP')}</>
-          )}
-        </div>
-        <div className="form-row" style={{ flexWrap: 'wrap', margin: 0 }}>
-          <button className="btn" onClick={handleUpload} disabled={cloudBusy}>
-            {cloudBusy ? '実行中...' : '☁ 一括アップロード（移行）'}
-          </button>
-          <button className="btn btn-secondary" onClick={handleManualPull} disabled={cloudBusy}>
-            🔄 今すぐ取得
-          </button>
-          <button
-            className="btn btn-secondary btn-small"
-            onClick={() => onNavigate?.('settings')}
-          >⚙ ワークスペース設定 →</button>
-        </div>
-        {cloudMsg && <div style={{ color: 'var(--success)', fontSize: 12, marginTop: 8 }}>{cloudMsg}</div>}
-        {cloudErr && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{cloudErr}</div>}
-        {cloudStatus.lastError && !cloudErr && (
-          <div style={{ color: 'var(--warning)', fontSize: 11, marginTop: 8 }}>
-            最後のエラー: {cloudStatus.lastError}
-          </div>
-        )}
-      </div>
-
-      <div className="card data-mgmt-card">
-        <div className="card-title">
-          💾 データ管理
-          <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
-            自動バックアップ {backups.length}/5 世代
-            {latestBackup && `　·　最新: ${new Date(latestBackup.timestamp).toLocaleString('ja-JP')}`}
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
-          起動するたびに自動でスナップショットが保存されます（同一内容・1時間以内はスキップ）。<br />
-          重要な変更前や機種変更前は <strong>エクスポート</strong> で JSON ファイルを保存しておくと完全に安全です。
-        </div>
-        <div className="form-row" style={{ flexWrap: 'wrap', margin: 0 }}>
-          <button className="btn" onClick={handleExport}>⬇ データをエクスポート</button>
-          <button className="btn btn-secondary" onClick={handleImportClick}>⬆ データをインポート</button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json"
-            style={{ display: 'none' }}
-            onChange={handleImportFile}
-          />
-          <button
-            className="btn btn-secondary btn-small"
-            onClick={() => onNavigate?.('settings')}
-          >📂 バックアップ履歴 →</button>
-        </div>
-        {dataMsg && <div style={{ color: 'var(--success)', fontSize: 12, marginTop: 8 }}>{dataMsg}</div>}
-        {dataErr && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{dataErr}</div>}
       </div>
 
       <div className="home-grid">
@@ -440,86 +326,91 @@ export default function Home({ userName, onNavigate }) {
 
           <div className="card">
             <div className="card-title">
-              📅 今日のスケジュール
-              <button
-                className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
-                onClick={() => onNavigate?.('schedule')}
-              >編集 →</button>
-            </div>
-            {todayEntries.length === 0 ? (
-              <div className="empty" style={{ padding: 20 }}>本日の予定はまだありません</div>
-            ) : (
-              todayEntries.map(e => (
-                <div key={e.id} className="timeline-entry" style={{ marginBottom: 6 }}>
-                  <span style={{ color: 'var(--text-muted)', marginRight: 10, fontSize: 12 }}>
-                    {String(e.hour).padStart(2, '0')}:00
-                  </span>
-                  {e.text}
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-title">
-              🗓️ Google カレンダー（1週間）
+              📅 今日のスケジュール（Google カレンダー統合）
               <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
                 {tokenValid
-                  ? (gcalBusy ? '同期中...' : `${userName} さんと連携中`)
-                  : '未連携'}
+                  ? (gcalBusy ? '同期中...' : `GCal 連携中`)
+                  : 'GCal 未連携'}
               </span>
             </div>
-            {!tokenValid ? (
-              <div className="empty" style={{ padding: 16, fontSize: 13 }}>
-                スケジュール画面の「📅 Googleカレンダー連携」から自分のアカウントを接続すると、
-                ここに今日から1週間分の予定が自動表示されます。
-                <div style={{ marginTop: 10 }}>
-                  <button className="btn btn-small" onClick={() => onNavigate?.('schedule')}>
-                    📅 スケジュール画面へ
-                  </button>
-                </div>
+            {todayScheduleItems.length === 0 ? (
+              <div className="empty" style={{ padding: 20 }}>
+                本日の予定はありません
+                {!tokenValid && (
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
+                      📅 Googleカレンダーを連携する
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="gcal-week">
-                {weekDays.map(d => {
-                  const events = myEvents[d.key] || []
-                  return (
-                    <div key={d.key} className={`gcal-week-day ${d.key === today ? 'today' : ''}`}>
-                      <div className="gcal-week-day-label">
-                        <span className="gcal-week-day-name">{d.label}</span>
-                        <span className="gcal-week-day-wday">（{d.wday}）</span>
-                        <span className="gcal-week-day-count">{events.length}件</span>
-                      </div>
-                      {events.length === 0 ? (
-                        <div className="gcal-empty">予定なし</div>
-                      ) : (
-                        events.map(ev => (
-                          <div key={ev.id} className="gcal-event">
-                            <span className="gcal-event-time">{fmtEventTime(ev)}</span>
-                            <span className="gcal-event-title">{ev.title}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )
-                })}
+              <div className="merged-schedule">
+                {todayScheduleItems.map(e => (
+                  <div
+                    key={e.id}
+                    className={`merged-schedule-row src-${e.source}`}
+                    title={e.source === 'gcal' ? 'Google カレンダー' : '手動入力'}
+                  >
+                    <span className="merged-schedule-time">
+                      {e.source === 'gcal'
+                        ? (e.allDay ? '終日' : e.timeRange)
+                        : `${String(e.hour).padStart(2, '0')}:00`}
+                    </span>
+                    <span className="merged-schedule-text">
+                      {e.source === 'gcal' && <span className="merged-schedule-mark">🗓</span>}
+                      {e.text}
+                    </span>
+                    {e.category && (
+                      <span className={`tag tag-${e.category}`} style={{ fontSize: 10 }}>{e.category}</span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
+            <div style={{ marginTop: 10, textAlign: 'right' }}>
+              <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
+                編集 →
+              </button>
+            </div>
           </div>
         </div>
 
         <div>
+          {/* 今日やること（編集可） */}
           <div className="card">
             <div className="card-title">
               🎯 今日やること
               <span style={{ float: 'right', fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-                {routineDone}/{DAILY_ROUTINE.length} 完了
+                {routineDone}/{(routineItems || []).length} 完了
+                <button
+                  className="btn btn-small btn-secondary"
+                  style={{ marginLeft: 8 }}
+                  onClick={() => setEditingRoutine(s => !s)}
+                >{editingRoutine ? '完了' : '編集'}</button>
               </span>
             </div>
             <div className="daily-routine">
-              {DAILY_ROUTINE.map(r => {
+              {(routineItems || []).map(r => {
                 const done = !!todayRoutine[r.key]
+                if (editingRoutine) {
+                  return (
+                    <div key={r.key} className="routine-edit-row">
+                      <input
+                        className="text-input"
+                        style={{ width: 50, textAlign: 'center', flex: 'none' }}
+                        value={r.icon}
+                        onChange={e => updateRoutineItem(r.key, { icon: e.target.value })}
+                      />
+                      <input
+                        className="text-input"
+                        value={r.text}
+                        onChange={e => updateRoutineItem(r.key, { text: e.target.value })}
+                      />
+                      <button className="btn-icon" onClick={() => removeRoutineItem(r.key)}>×</button>
+                    </div>
+                  )
+                }
                 return (
                   <label key={r.key} className={`routine-row ${done ? 'done' : ''}`}>
                     <input
@@ -533,9 +424,29 @@ export default function Home({ userName, onNavigate }) {
                   </label>
                 )
               })}
+              {editingRoutine && (
+                <div className="routine-edit-row" style={{ marginTop: 8, borderTop: '1px dashed var(--border)', paddingTop: 8 }}>
+                  <input
+                    className="text-input"
+                    style={{ width: 50, textAlign: 'center', flex: 'none' }}
+                    placeholder="📌"
+                    value={newRoutineIcon}
+                    onChange={e => setNewRoutineIcon(e.target.value)}
+                  />
+                  <input
+                    className="text-input"
+                    placeholder="新しい今日やること..."
+                    value={newRoutineText}
+                    onChange={e => setNewRoutineText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addRoutineItem()}
+                  />
+                  <button className="btn btn-small" onClick={addRoutineItem}>＋ 追加</button>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* なりたい自分の実践 */}
           <div className="card">
             <div className="card-title">
               🌟 なりたい自分の実践
@@ -561,6 +472,7 @@ export default function Home({ userName, onNavigate }) {
             )}
           </div>
 
+          {/* 今後の取り組み */}
           <div className="card">
             <div className="card-title">
               🚀 今後の取り組み
@@ -592,23 +504,54 @@ export default function Home({ userName, onNavigate }) {
             )}
           </div>
 
+          {/* ロードマップ（編集可・現在地クリックで設定） */}
           <div className="card">
             <div className="card-title">
               🗺️ ロードマップ進捗
-              <button
-                className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
-                onClick={() => onNavigate?.('strategy')}
-              >→ 戦略</button>
+              <span style={{ float: 'right' }}>
+                <button
+                  className="btn btn-small btn-secondary"
+                  onClick={() => setEditingRoadmap(s => !s)}
+                >{editingRoadmap ? '完了' : '編集'}</button>
+              </span>
             </div>
             <div className="roadmap-list">
-              {ROADMAP.map((r, i) => {
-                const isCurrent = r.key === CURRENT_PHASE_KEY
-                const reached = ROADMAP.findIndex(x => x.key === CURRENT_PHASE_KEY) >= i
+              {(roadmapItems || []).map((r, i) => {
+                const isCurrent = r.key === currentPhase
+                const reached = (roadmapItems || []).findIndex(x => x.key === currentPhase) >= i
+                if (editingRoadmap) {
+                  return (
+                    <div key={r.key} className="roadmap-edit-row">
+                      <input
+                        className="text-input"
+                        placeholder="期間"
+                        value={r.phase}
+                        onChange={e => updateRoadmapItem(r.key, { phase: e.target.value })}
+                        style={{ flex: 1, minWidth: 80 }}
+                      />
+                      <input
+                        className="text-input"
+                        placeholder="目標"
+                        value={r.goal}
+                        onChange={e => updateRoadmapItem(r.key, { goal: e.target.value })}
+                        style={{ flex: 2 }}
+                      />
+                      <button
+                        className={`btn btn-small ${isCurrent ? '' : 'btn-secondary'}`}
+                        onClick={() => setCurrentPhase(r.key)}
+                        title="現在地に設定"
+                      >{isCurrent ? '★ 現在' : '現在に'}</button>
+                      <button className="btn-icon" onClick={() => removeRoadmapItem(r.key)}>×</button>
+                    </div>
+                  )
+                }
                 return (
                   <div
                     key={r.key}
                     className={`roadmap-row ${isCurrent ? 'current' : ''} ${reached ? 'reached' : ''}`}
+                    onClick={() => setCurrentPhase(r.key)}
+                    style={{ cursor: 'pointer' }}
+                    title="クリックで現在地に設定"
                   >
                     <div className="roadmap-dot">{i + 1}</div>
                     <div className="roadmap-body">
@@ -621,6 +564,25 @@ export default function Home({ userName, onNavigate }) {
                   </div>
                 )
               })}
+              {editingRoadmap && (
+                <div className="roadmap-edit-row" style={{ marginTop: 8, borderTop: '1px dashed var(--border)', paddingTop: 8 }}>
+                  <input
+                    className="text-input"
+                    placeholder="期間（例：3〜5年）"
+                    value={newPhaseLabel}
+                    onChange={e => setNewPhaseLabel(e.target.value)}
+                    style={{ flex: 1, minWidth: 80 }}
+                  />
+                  <input
+                    className="text-input"
+                    placeholder="目標（例：年商10億円）"
+                    value={newPhaseGoal}
+                    onChange={e => setNewPhaseGoal(e.target.value)}
+                    style={{ flex: 2 }}
+                  />
+                  <button className="btn btn-small" onClick={addRoadmapItem}>＋ 追加</button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -645,16 +607,6 @@ export default function Home({ userName, onNavigate }) {
                 </div>
               ))
             )}
-          </div>
-
-          <div className="card">
-            <div className="card-title">クイックジャンプ</div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <button className="btn btn-secondary" onClick={() => onNavigate?.('mt')}>📝 MTメモを書く</button>
-              <button className="btn btn-secondary" onClick={() => onNavigate?.('goals')}>🎯 目標を見る</button>
-              <button className="btn btn-secondary" onClick={() => onNavigate?.('strategy')}>📋 戦略・戦術</button>
-              <button className="btn btn-secondary" onClick={() => onNavigate?.('sns')}>📱 SNSネタ帳</button>
-            </div>
           </div>
         </div>
       </div>
