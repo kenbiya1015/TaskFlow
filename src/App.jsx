@@ -3,6 +3,7 @@ import './App.css'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
+import { initCloudSync } from './lib/cloudSync'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -40,6 +41,8 @@ export default function App() {
     runMigrations()
     // 2. 起動時のスナップショットを履歴に保存（最大5世代、1時間以内は重複保存しない）
     autoBackup()
+    // 3. クラウド同期を開始（Supabaseから最新取得 → Realtime購読）
+    initCloudSync().catch(e => console.warn('[App] cloud sync init failed', e))
   }, [])
 
   useEffect(() => {

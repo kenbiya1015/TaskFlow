@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { MEMBERS } from '../members'
 import {
@@ -11,6 +11,15 @@ import {
   deleteAutoBackup,
   autoBackup,
 } from '../lib/storage'
+import {
+  getSyncStatus,
+  setWorkspaceId,
+  reconnectWithNewWorkspace,
+  uploadAllLocal,
+  pullAll,
+  STATUS_EVENT,
+} from '../lib/cloudSync'
+import { SUPABASE_URL } from '../lib/supabase'
 import { GCAL_CLIENT_ID } from '../config'
 
 export default function Settings({ currentUser, onChangeUser, onLogout }) {
@@ -24,6 +33,63 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
   const [backupError, setBackupError] = useState('')
   const [backupTick, setBackupTick] = useState(0)
   const backups = listAutoBackups()
+
+  // クラウド同期
+  const [cloudStatus, setCloudStatus] = useState(getSyncStatus())
+  const [wsDraft, setWsDraft] = useState(cloudStatus.workspaceId)
+  const [wsMsg, setWsMsg] = useState('')
+  const [wsErr, setWsErr] = useState('')
+  const [wsBusy, setWsBusy] = useState(false)
+
+  useEffect(() => {
+    const handler = (e) => setCloudStatus(e.detail || getSyncStatus())
+    window.addEventListener(STATUS_EVENT, handler)
+    return () => window.removeEventListener(STATUS_EVENT, handler)
+  }, [])
+
+  const handleSaveWorkspace = async () => {
+    setWsErr(''); setWsMsg('')
+    const next = (wsDraft || '').trim()
+    if (!next) { setWsErr('ワークスペースIDを入力してください'); return }
+    if (!confirm(`ワークスペースを "${next}" に切り替えます。\nクラウド側に同じIDのデータがあれば取得、無ければ空から始まります。\n続行しますか？`)) return
+    setWsBusy(true)
+    try {
+      setWorkspaceId(next)
+      await reconnectWithNewWorkspace()
+      setCloudStatus(getSyncStatus())
+      setWsMsg(`ワークスペースを ${next} に切り替えました`)
+    } catch (e) {
+      setWsErr(`切り替え失敗: ${e.message || e}`)
+    } finally {
+      setWsBusy(false)
+    }
+  }
+
+  const handleUpload = async () => {
+    setWsErr(''); setWsMsg('')
+    if (!confirm('現在の localStorage 全データをクラウドへアップロードします。続行しますか？')) return
+    setWsBusy(true)
+    try {
+      const r = await uploadAllLocal()
+      setWsMsg(`${r.uploaded} 件アップロードしました`)
+    } catch (e) {
+      setWsErr(`アップロード失敗: ${e.message || e}`)
+    } finally {
+      setWsBusy(false)
+    }
+  }
+
+  const handlePull = async () => {
+    setWsErr(''); setWsMsg('')
+    setWsBusy(true)
+    try {
+      const r = await pullAll()
+      if (r.ok) setWsMsg(`同期しました（${r.updated} 件更新／${r.count} 件取得）`)
+      else setWsErr(`取得失敗: ${r.error}`)
+    } finally {
+      setWsBusy(false)
+    }
+  }
 
   const handleManualBackup = () => {
     setBackupError(''); setBackupInfo('')
@@ -215,6 +281,56 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
         </div>
         {importInfo && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 8 }}>{importInfo}</div>}
         {importError && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</div>}
+      </div>
+
+      <div className="card cloud-sync-card">
+        <div className="card-title">
+          ☁ クラウド同期 / Supabase
+          <span style={{ float: 'right', fontSize: 11, fontWeight: 400 }}>
+            {!cloudStatus.online && <span className="cloud-pill cloud-pill-offline">オフライン</span>}
+            {cloudStatus.online && cloudStatus.connected && <span className="cloud-pill cloud-pill-online">● 接続中</span>}
+            {cloudStatus.online && !cloudStatus.connected && <span className="cloud-pill cloud-pill-connecting">接続待機中</span>}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.7 }}>
+          スマホ・PC・他メンバー間でリアルタイム同期します。<br />
+          接続先: <code>{SUPABASE_URL}</code><br />
+          現在のクライアントID（同期判別用）: <code style={{ fontSize: 10 }}>{cloudStatus.clientId?.slice(0, 16)}...</code><br />
+          {cloudStatus.lastSyncAt && (
+            <>最終同期: {new Date(cloudStatus.lastSyncAt).toLocaleString('ja-JP')}<br /></>
+          )}
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', marginBottom: 6 }}>
+            ワークスペースID（同じIDの人と同じデータを共有します）
+          </div>
+          <div className="form-row" style={{ margin: 0 }}>
+            <input
+              className="text-input"
+              value={wsDraft}
+              onChange={e => setWsDraft(e.target.value)}
+              placeholder="例: kenbiya-default"
+            />
+            <button className="btn" onClick={handleSaveWorkspace} disabled={wsBusy}>
+              切り替え
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            ⚠ 切り替えるとそのワークスペースのデータを読みに行きます。空のワークスペースに切り替えるとデータが空に見えるので、必要なら事前に「☁ アップロード」しておいてください。
+          </div>
+        </div>
+
+        <div className="form-row" style={{ flexWrap: 'wrap', margin: 0 }}>
+          <button className="btn" onClick={handleUpload} disabled={wsBusy}>
+            ☁ ローカル全データをアップロード（移行）
+          </button>
+          <button className="btn btn-secondary" onClick={handlePull} disabled={wsBusy}>
+            🔄 クラウドから取得
+          </button>
+        </div>
+        {wsMsg && <div style={{ color: 'var(--success)', fontSize: 13, marginTop: 8 }}>{wsMsg}</div>}
+        {wsErr && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{wsErr}</div>}
       </div>
 
       <div className="card">

@@ -9,6 +9,12 @@ import {
   autoBackup,
   listAutoBackups,
 } from '../lib/storage'
+import {
+  getSyncStatus,
+  uploadAllLocal,
+  pullAll,
+  STATUS_EVENT,
+} from '../lib/cloudSync'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -191,6 +197,47 @@ export default function Home({ userName, onNavigate }) {
   const backups = listAutoBackups()
   const latestBackup = backups[0]
 
+  // クラウド同期状態
+  const [cloudStatus, setCloudStatus] = useState(getSyncStatus())
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const [cloudMsg, setCloudMsg] = useState('')
+  const [cloudErr, setCloudErr] = useState('')
+
+  useEffect(() => {
+    const handler = (e) => setCloudStatus(e.detail || getSyncStatus())
+    window.addEventListener(STATUS_EVENT, handler)
+    return () => window.removeEventListener(STATUS_EVENT, handler)
+  }, [])
+
+  const handleUpload = async () => {
+    setCloudErr(''); setCloudMsg('')
+    if (!confirm('現在の localStorage の全データを Supabase にアップロードします。\n（既にクラウド側にあるキーは上書きされます）\n続行しますか？')) return
+    setCloudBusy(true)
+    try {
+      const r = await uploadAllLocal()
+      setCloudMsg(`クラウドへ ${r.uploaded} 件アップロードしました`)
+    } catch (e) {
+      setCloudErr(`アップロード失敗: ${e.message || e}`)
+    } finally {
+      setCloudBusy(false)
+    }
+  }
+
+  const handleManualPull = async () => {
+    setCloudErr(''); setCloudMsg('')
+    setCloudBusy(true)
+    try {
+      const r = await pullAll()
+      if (r.ok) {
+        setCloudMsg(`同期しました（${r.updated} 件更新／${r.count} 件取得）`)
+      } else {
+        setCloudErr(`同期失敗: ${r.error}`)
+      }
+    } finally {
+      setCloudBusy(false)
+    }
+  }
+
   const handleExport = () => {
     setDataMsg(''); setDataErr('')
     try {
@@ -289,6 +336,44 @@ export default function Home({ userName, onNavigate }) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="card cloud-sync-card">
+        <div className="card-title">
+          ☁ クラウド同期
+          <span style={{ float: 'right', fontSize: 11, fontWeight: 400 }}>
+            {!cloudStatus.online && <span className="cloud-pill cloud-pill-offline">オフライン</span>}
+            {cloudStatus.online && cloudStatus.connected && <span className="cloud-pill cloud-pill-online">● 接続中</span>}
+            {cloudStatus.online && !cloudStatus.connected && <span className="cloud-pill cloud-pill-connecting">接続待機中</span>}
+            {cloudStatus.pendingPushes > 0 && <span className="cloud-pill cloud-pill-pending">⇡ {cloudStatus.pendingPushes}</span>}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
+          スマホ・PC・他メンバー間でリアルタイム同期されます。<br />
+          ワークスペース: <code>{cloudStatus.workspaceId}</code>
+          {cloudStatus.lastSyncAt && (
+            <>　·　最終同期: {new Date(cloudStatus.lastSyncAt).toLocaleString('ja-JP')}</>
+          )}
+        </div>
+        <div className="form-row" style={{ flexWrap: 'wrap', margin: 0 }}>
+          <button className="btn" onClick={handleUpload} disabled={cloudBusy}>
+            {cloudBusy ? '実行中...' : '☁ 一括アップロード（移行）'}
+          </button>
+          <button className="btn btn-secondary" onClick={handleManualPull} disabled={cloudBusy}>
+            🔄 今すぐ取得
+          </button>
+          <button
+            className="btn btn-secondary btn-small"
+            onClick={() => onNavigate?.('settings')}
+          >⚙ ワークスペース設定 →</button>
+        </div>
+        {cloudMsg && <div style={{ color: 'var(--success)', fontSize: 12, marginTop: 8 }}>{cloudMsg}</div>}
+        {cloudErr && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{cloudErr}</div>}
+        {cloudStatus.lastError && !cloudErr && (
+          <div style={{ color: 'var(--warning)', fontSize: 11, marginTop: 8 }}>
+            最後のエラー: {cloudStatus.lastError}
+          </div>
+        )}
       </div>
 
       <div className="card data-mgmt-card">
