@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
-import { initCloudSync } from './lib/cloudSync'
+import { initCloudSync, getSyncStatus, STATUS_EVENT } from './lib/cloudSync'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -114,8 +114,50 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <CloudSyncIndicator />
       </aside>
       <main className="main">{render()}</main>
+    </div>
+  )
+}
+
+function CloudSyncIndicator() {
+  const [status, setStatus] = useState(getSyncStatus())
+  const [flash, setFlash] = useState(false)
+  const lastSyncRef = useRef(status.lastSyncAt)
+
+  useEffect(() => {
+    const handler = (e) => setStatus(e.detail || getSyncStatus())
+    window.addEventListener(STATUS_EVENT, handler)
+    return () => window.removeEventListener(STATUS_EVENT, handler)
+  }, [])
+
+  // 同期成功した瞬間、緑バッジを一瞬光らせる
+  useEffect(() => {
+    if (status.lastSyncAt && status.lastSyncAt !== lastSyncRef.current) {
+      lastSyncRef.current = status.lastSyncAt
+      setFlash(true)
+      const t = setTimeout(() => setFlash(false), 1500)
+      return () => clearTimeout(t)
+    }
+  }, [status.lastSyncAt])
+
+  let label, cls
+  if (!status.online) {
+    label = '⚠ オフライン'; cls = 'cloud-ind-offline'
+  } else if (status.pendingPushes > 0) {
+    label = `↻ 保存中... (${status.pendingPushes})`; cls = 'cloud-ind-saving'
+  } else if (flash) {
+    label = '✓ 保存しました'; cls = 'cloud-ind-flash'
+  } else if (status.connected) {
+    label = '● クラウド同期中'; cls = 'cloud-ind-online'
+  } else {
+    label = '… 接続待機中'; cls = 'cloud-ind-connecting'
+  }
+
+  return (
+    <div className={`cloud-indicator ${cls}`} title={status.lastSyncAt ? `最終同期: ${new Date(status.lastSyncAt).toLocaleString('ja-JP')}` : ''}>
+      {label}
     </div>
   )
 }

@@ -109,15 +109,17 @@ export function queuePush(key, value) {
 
 function scheduleFlush() {
   if (_flushTimer) return
-  _flushTimer = setTimeout(flushPending, 350)
+  _flushTimer = setTimeout(flushPending, 200) // 200ms 即時感を保ちつつバッチ化
 }
 
+let _retryDelay = 1000
 async function flushPending() {
   _flushTimer = null
   if (_pendingPushes.length === 0) return
   const batch = _pendingPushes.splice(0)
   _pushing += batch.length
   emitStatus()
+  let failed = false
   try {
     const ws = getWorkspaceId()
     const myId = getClientId()
@@ -133,23 +135,30 @@ async function flushPending() {
       .upsert(rows, { onConflict: 'workspace_id,key' })
     if (error) {
       _lastError = error.message
-      // 失敗したら戻して再送
       _pendingPushes.unshift(...batch)
+      failed = true
       console.warn('[cloudSync] push failed', error.message)
     } else {
       _lastError = null
       _lastSyncAt = Date.now()
+      _retryDelay = 1000 // 成功でリセット
     }
   } catch (e) {
     _lastError = e.message || String(e)
     _pendingPushes.unshift(...batch)
+    failed = true
     console.warn('[cloudSync] push exception', e)
   } finally {
     _pushing -= batch.length
     emitStatus()
     if (_pendingPushes.length > 0) {
-      // まだ残ってる場合は再スケジュール
-      setTimeout(scheduleFlush, 2000)
+      if (failed) {
+        // 指数バックオフ：1s → 2s → 4s → 8s → 上限30s
+        _retryDelay = Math.min(_retryDelay * 2, 30000)
+        setTimeout(scheduleFlush, _retryDelay)
+      } else {
+        scheduleFlush()
+      }
     }
   }
 }
@@ -192,7 +201,84 @@ export async function pullAll() {
 }
 
 // ──────────────────────────────────────────────
-// 一括アップロード（移行用）
+// 双方向マージ：クラウドから取得しつつ、ローカルにしか無いキーは自動アップロード
+// （初回接続や、ローカルでだけ作成された新キーの自動移行に使う）
+// ──────────────────────────────────────────────
+export async function pullAndMerge() {
+  try {
+    const ws = getWorkspaceId()
+    const myId = getClientId()
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('key, value, updated_at')
+      .eq('workspace_id', ws)
+    if (error) {
+      _lastError = error.message
+      emitStatus()
+      console.warn('[cloudSync] pullAndMerge failed', error.message)
+      return { ok: false, error: error.message }
+    }
+    const cloudKeys = new Set()
+    let updated = 0
+    for (const row of data || []) {
+      cloudKeys.add(row.key)
+      if (SYNC_EXCLUDE.has(row.key)) continue
+      const serialized = JSON.stringify(row.value)
+      const current = window.localStorage.getItem(row.key)
+      if (current === serialized) continue
+      window.localStorage.setItem(row.key, serialized)
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
+      updated++
+    }
+    // ローカルにしか無いキーを自動アップロード
+    const toUpload = []
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i)
+      if (!k || !k.startsWith('tf_')) continue
+      if (SYNC_EXCLUDE.has(k)) continue
+      if (cloudKeys.has(k)) continue
+      try {
+        const raw = window.localStorage.getItem(k)
+        if (raw === null) continue
+        const value = JSON.parse(raw)
+        toUpload.push({
+          workspace_id: ws,
+          key: k,
+          value,
+          client_id: myId,
+          updated_at: new Date().toISOString(),
+        })
+      } catch { /* skip */ }
+    }
+    let uploaded = 0
+    if (toUpload.length > 0) {
+      const CHUNK = 50
+      for (let i = 0; i < toUpload.length; i += CHUNK) {
+        const chunk = toUpload.slice(i, i + CHUNK)
+        const { error: upErr } = await supabase
+          .from(TABLE)
+          .upsert(chunk, { onConflict: 'workspace_id,key' })
+        if (upErr) {
+          console.warn('[cloudSync] auto-upload chunk failed', upErr.message)
+          _lastError = upErr.message
+          break
+        }
+        uploaded += chunk.length
+      }
+    }
+    _lastSyncAt = Date.now()
+    _lastError = null
+    emitStatus()
+    return { ok: true, pulled: data?.length || 0, updated, uploaded }
+  } catch (e) {
+    _lastError = e.message || String(e)
+    emitStatus()
+    return { ok: false, error: _lastError }
+  }
+}
+
+// ──────────────────────────────────────────────
+// 一括アップロード（手動移行用：ローカルの全キーを強制上書き）
 // ──────────────────────────────────────────────
 export async function uploadAllLocal() {
   const ws = getWorkspaceId()
@@ -296,15 +382,15 @@ export async function initCloudSync() {
   if (_initialized) return
   _initialized = true
 
-  // 起動時に最新を取得
-  await pullAll()
+  // 起動時：クラウドから取得しつつ、ローカルにしか無いキーは自動アップロード
+  await pullAndMerge()
   // Realtime 購読開始
   subscribeRealtime()
 
   // ネット復帰時：再取得 + 滞留分の再送
   window.addEventListener('online', () => {
     emitStatus()
-    pullAll()
+    pullAndMerge()
     if (_pendingPushes.length > 0) scheduleFlush()
   })
   window.addEventListener('offline', () => emitStatus())
@@ -312,6 +398,6 @@ export async function initCloudSync() {
 
 export async function reconnectWithNewWorkspace() {
   unsubscribeRealtime()
-  await pullAll()
+  await pullAndMerge()
   subscribeRealtime()
 }
