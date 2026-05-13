@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { findMember } from '../members'
 import { STRATEGY_CATEGORIES } from './Strategy'
+import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
 
 function todayKey() {
   const d = new Date()
@@ -22,6 +23,7 @@ export default function Home({ userName, onNavigate }) {
   const [ideas] = useLocalStorage('tf_ideas', [])
   const [memos] = useLocalStorage('tf_mtmemos', [])
   const [strategies] = useLocalStorage('tf_strategies', {})
+  const [routineLog, setRoutineLog] = useLocalStorage('tf_daily_routine', {})
 
   const member = findMember(userName)
   const today = todayKey()
@@ -58,6 +60,15 @@ export default function Home({ userName, onNavigate }) {
   const dt = new Date()
   const days = ['日', '月', '火', '水', '木', '金', '土']
   const dateLabel = `${dt.getMonth() + 1}月${dt.getDate()}日（${days[dt.getDay()]}）`
+
+  const todayRoutine = routineLog[today] || {}
+  const toggleRoutine = key => {
+    setRoutineLog({
+      ...routineLog,
+      [today]: { ...todayRoutine, [key]: !todayRoutine[key] },
+    })
+  }
+  const routineDone = DAILY_ROUTINE.filter(r => todayRoutine[r.key]).length
 
   return (
     <div>
@@ -154,6 +165,64 @@ export default function Home({ userName, onNavigate }) {
         </div>
 
         <div>
+          <div className="card">
+            <div className="card-title">
+              🎯 今日やること3つ
+              <span style={{ float: 'right', fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+                {routineDone}/{DAILY_ROUTINE.length} 完了
+              </span>
+            </div>
+            <div className="daily-routine">
+              {DAILY_ROUTINE.map(r => {
+                const done = !!todayRoutine[r.key]
+                return (
+                  <label key={r.key} className={`routine-row ${done ? 'done' : ''}`}>
+                    <input
+                      type="checkbox"
+                      className="task-check"
+                      checked={done}
+                      onChange={() => toggleRoutine(r.key)}
+                    />
+                    <span className="routine-time">{r.icon} {r.time}</span>
+                    <span className="routine-text">{r.text}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-title">
+              🗺️ ロードマップ進捗
+              <button
+                className="btn btn-small btn-secondary"
+                style={{ float: 'right' }}
+                onClick={() => onNavigate?.('strategy')}
+              >→ 戦略</button>
+            </div>
+            <div className="roadmap-list">
+              {ROADMAP.map((r, i) => {
+                const isCurrent = r.key === CURRENT_PHASE_KEY
+                const reached = ROADMAP.findIndex(x => x.key === CURRENT_PHASE_KEY) >= i
+                return (
+                  <div
+                    key={r.key}
+                    className={`roadmap-row ${isCurrent ? 'current' : ''} ${reached ? 'reached' : ''}`}
+                  >
+                    <div className="roadmap-dot">{i + 1}</div>
+                    <div className="roadmap-body">
+                      <div className="roadmap-phase">
+                        {r.phase}
+                        {isCurrent && <span className="roadmap-badge">現在地</span>}
+                      </div>
+                      <div className="roadmap-goal">{r.goal}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="card">
             <div className="card-title">
               💡 自分のアイデア

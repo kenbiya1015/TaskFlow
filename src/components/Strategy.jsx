@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { DEFAULT_STRATEGIES } from '../data/strategyDefaults'
 
 export const STRATEGY_CATEGORIES = [
   { id: 'kenbiya_office',   name: '健美屋オフィス', emoji: '🏢', color: '#2f6fed' },
@@ -14,8 +15,16 @@ function emptyEntry() {
 }
 
 export default function Strategy() {
-  const [data, setData] = useLocalStorage('tf_strategies', {})
+  const [data, setData] = useLocalStorage('tf_strategies', DEFAULT_STRATEGIES)
   const [drafts, setDrafts] = useState({})
+
+  // 既存ユーザーが空オブジェクト {} を持っている場合のみ、初期データを投入する
+  useEffect(() => {
+    if (data && typeof data === 'object' && Object.keys(data).length === 0) {
+      setData(DEFAULT_STRATEGIES)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const get = id => data[id] || emptyEntry()
 

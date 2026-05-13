@@ -1409,6 +1409,127 @@
   gap: 6px;
 }
 
+/* ===== 今日やること3つ ===== */
+.daily-routine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.routine-row {
+  display: grid;
+  grid-template-columns: 18px 56px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.routine-row:hover {
+  background: var(--surface);
+}
+
+.routine-row.done {
+  opacity: 0.55;
+}
+
+.routine-row.done .routine-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.routine-time {
+  font-weight: 600;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.routine-text {
+  color: var(--text);
+}
+
+/* ===== ロードマップ進捗 ===== */
+.roadmap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.roadmap-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border-left: 3px solid var(--border);
+  font-size: 12px;
+  align-items: center;
+}
+
+.roadmap-row.reached {
+  border-left-color: #1f9e6a;
+}
+
+.roadmap-row.current {
+  background: rgba(47, 111, 237, 0.08);
+  border-left-color: #2f6fed;
+}
+
+.roadmap-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.roadmap-row.reached .roadmap-dot {
+  background: #1f9e6a;
+  border-color: #1f9e6a;
+  color: #fff;
+}
+
+.roadmap-row.current .roadmap-dot {
+  background: #2f6fed;
+  border-color: #2f6fed;
+  color: #fff;
+}
+
+.roadmap-phase {
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.roadmap-goal {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.roadmap-badge {
+  background: #2f6fed;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .schedule-container { grid-template-columns: 1fr; }
