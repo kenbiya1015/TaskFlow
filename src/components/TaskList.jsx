@@ -34,7 +34,7 @@ function dueStatus(due) {
 export default function TaskList({ currentUser }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [filter, setFilter] = useState('全て')
-  const [view, setView] = useState('list') // 'list' or 'kanban'
+  const [view, setView] = useState('kanban') // 'list' or 'kanban'
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
