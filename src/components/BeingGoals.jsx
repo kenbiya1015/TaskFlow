@@ -1,47 +1,126 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
-import { MEMBER_NAMES } from '../members'
-
-const MEMBERS = MEMBER_NAMES
 
 export default function BeingGoals({ currentUser }) {
   const [data, setData] = useLocalStorage('tf_being', {})
-  const [active, setActive] = useState(currentUser || MEMBER_NAMES[0])
   const [newItem, setNewItem] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editingText, setEditingText] = useState('')
 
-  const personData = data[active] || { description: '', items: [] }
+  // ドラッグ&ドロップ
+  const [draggedId, setDraggedId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
+  const touchDragRef = useRef({})
+
+  const me = currentUser
+  const personData = data[me] || { description: '', items: [] }
+  const items = personData.items || []
+
+  const writeItems = (nextItems) => {
+    setData({ ...data, [me]: { ...personData, items: nextItems } })
+  }
 
   const updateDescription = v => {
-    setData({ ...data, [active]: { ...personData, description: v } })
+    setData({ ...data, [me]: { ...personData, description: v } })
   }
 
   const addItem = () => {
-    if (!newItem.trim()) return
-    const next = { ...data }
-    next[active] = {
-      ...personData,
-      items: [...(personData.items || []), { id: uid(), text: newItem.trim(), done: false }],
-    }
-    setData(next)
+    const txt = newItem.trim()
+    if (!txt) return
+    writeItems([...items, { id: uid(), text: txt, done: false }])
     setNewItem('')
   }
 
-  const toggleItem = id => {
-    const next = { ...data }
-    next[active] = {
-      ...personData,
-      items: (personData.items || []).map(i => i.id === id ? { ...i, done: !i.done } : i),
-    }
-    setData(next)
+  const toggleItem = id =>
+    writeItems(items.map(i => i.id === id ? { ...i, done: !i.done } : i))
+
+  const removeItem = id =>
+    writeItems(items.filter(i => i.id !== id))
+
+  const startEdit = (item) => {
+    setEditingId(item.id)
+    setEditingText(item.text)
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditingText('')
+  }
+  const saveEdit = (id) => {
+    const txt = editingText.trim()
+    if (!txt) { cancelEdit(); return }
+    writeItems(items.map(i => i.id === id ? { ...i, text: txt } : i))
+    setEditingId(null)
+    setEditingText('')
   }
 
-  const removeItem = id => {
-    const next = { ...data }
-    next[active] = {
-      ...personData,
-      items: (personData.items || []).filter(i => i.id !== id),
+  const reorder = (fromId, toId) => {
+    if (!fromId || fromId === toId) return
+    const fromIdx = items.findIndex(i => i.id === fromId)
+    const toIdx = items.findIndex(i => i.id === toId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const next = [...items]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    writeItems(next)
+  }
+
+  // タッチ用ロングプレスD&D
+  const handlePointerDown = (item, e) => {
+    if (e.pointerType !== 'touch') return
+    if (editingId === item.id) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const ref = touchDragRef.current
+    ref.active = false
+
+    const cleanup = () => {
+      clearTimeout(ref.longPressTimer)
+      ref.longPressTimer = null
+      ref.active = false
+      document.body.classList.remove('practice-touch-dragging')
+      setDraggedId(null)
+      setDragOverId(null)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', cleanup)
     }
-    setData(next)
+    const onMove = (ev) => {
+      if (!ref.active) {
+        const dx = Math.abs(ev.clientX - startX)
+        const dy = Math.abs(ev.clientY - startY)
+        if (dx > 8 || dy > 8) cleanup()
+        return
+      }
+      ev.preventDefault()
+      const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+      const row = tgt && tgt.closest ? tgt.closest('[data-practice-id]') : null
+      if (row) {
+        const tid = row.getAttribute('data-practice-id')
+        if (tid && tid !== item.id) setDragOverId(tid)
+      } else {
+        setDragOverId(null)
+      }
+    }
+    const onUp = (ev) => {
+      if (ref.active) {
+        const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+        const row = tgt && tgt.closest ? tgt.closest('[data-practice-id]') : null
+        if (row) {
+          const tid = row.getAttribute('data-practice-id')
+          if (tid && tid !== item.id) reorder(item.id, tid)
+        }
+      }
+      cleanup()
+    }
+    ref.longPressTimer = setTimeout(() => {
+      ref.active = true
+      setDraggedId(item.id)
+      document.body.classList.add('practice-touch-dragging')
+      if (navigator.vibrate) { try { navigator.vibrate(10) } catch { /* ignore */ } }
+    }, 350)
+    document.addEventListener('pointermove', onMove, { passive: false })
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', cleanup)
   }
 
   return (
@@ -53,16 +132,8 @@ export default function BeingGoals({ currentUser }) {
         </div>
       </div>
 
-      <div className="year-tabs" style={{ paddingLeft: 0, marginBottom: 18 }}>
-        {MEMBERS.map(m => (
-          <button key={m} className={`year-tab ${active === m ? 'active' : ''}`} onClick={() => setActive(m)}>
-            {m}
-          </button>
-        ))}
-      </div>
-
       <div className="vision-section">
-        <div className="vision-section-title">{active} の理想像</div>
+        <div className="vision-section-title">{me} の理想像</div>
         <div className="vision-section-en">SELF　IMAGE</div>
         <textarea
           className="textarea"
@@ -87,18 +158,74 @@ export default function BeingGoals({ currentUser }) {
             />
             <button className="btn" onClick={addItem}>追加</button>
           </div>
-          {(personData.items || []).length === 0 ? (
+          {items.length === 0 ? (
             <div className="empty" style={{ padding: 20 }}>実践項目はまだありません</div>
           ) : (
-            (personData.items || []).map(i => (
-              <div key={i.id} className="year-goal-item">
-                <input type="checkbox" className="task-check" checked={i.done} onChange={() => toggleItem(i.id)} />
-                <div style={{ flex: 1, textDecoration: i.done ? 'line-through' : 'none', opacity: i.done ? 0.55 : 1 }}>
-                  {i.text}
+            items.map(i => {
+              const isEditing = editingId === i.id
+              const isDragOver = dragOverId === i.id
+              const isDragging = draggedId === i.id
+              return (
+                <div
+                  key={i.id}
+                  data-practice-id={i.id}
+                  className={`year-goal-item practice-row ${isDragOver ? 'drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                  draggable={!isEditing}
+                  onDragStart={e => {
+                    if (isEditing) { e.preventDefault(); return }
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', i.id)
+                    setDraggedId(i.id)
+                  }}
+                  onDragOver={e => {
+                    if (!draggedId || draggedId === i.id) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    if (dragOverId !== i.id) setDragOverId(i.id)
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverId === i.id) setDragOverId(null)
+                  }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    const fromId = e.dataTransfer.getData('text/plain') || draggedId
+                    if (fromId && fromId !== i.id) reorder(fromId, i.id)
+                    setDraggedId(null)
+                    setDragOverId(null)
+                  }}
+                  onDragEnd={() => { setDraggedId(null); setDragOverId(null) }}
+                  onPointerDown={e => handlePointerDown(i, e)}
+                >
+                  <span className="practice-drag-handle" title="ドラッグで並び替え" aria-hidden>⋮⋮</span>
+                  <input type="checkbox" className="task-check" checked={i.done} onChange={() => toggleItem(i.id)} />
+                  {isEditing ? (
+                    <>
+                      <input
+                        className="text-input"
+                        style={{ flex: 1 }}
+                        value={editingText}
+                        onChange={e => setEditingText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); saveEdit(i.id) }
+                          if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                        }}
+                        autoFocus
+                      />
+                      <button className="btn btn-small" onClick={() => saveEdit(i.id)}>保存</button>
+                      <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ flex: 1, textDecoration: i.done ? 'line-through' : 'none', opacity: i.done ? 0.55 : 1 }}>
+                        {i.text}
+                      </div>
+                      <button className="btn-icon" onClick={() => startEdit(i)} title="編集">✏️</button>
+                      <button className="btn-icon" onClick={() => removeItem(i.id)} title="削除">×</button>
+                    </>
+                  )}
                 </div>
-                <button className="btn-icon" onClick={() => removeItem(i.id)}>×</button>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

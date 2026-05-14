@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
-import { MEMBER_NAMES } from '../members'
+import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
-const MEMBERS = MEMBER_NAMES
 
 const NO_PARTNER = '__none__'
 
@@ -94,14 +92,14 @@ export default function MTMemo({ currentUser }) {
   const updateMemoPartner = (id, pid) =>
     setMemos(memos.map(m => m.id === id ? { ...m, partnerId: pid === NO_PARTNER ? null : pid } : m))
 
-  const distributeToTask = (memo, category, member) => {
+  const distributeToTask = (memo, category) => {
     setTasks([
       {
         id: uid(),
         text: memo.title,
         category,
-        member,
-        priority: '中',
+        member: currentUser,
+        priority: 'B',
         due: '',
         done: false,
         createdAt: Date.now(),
@@ -110,14 +108,14 @@ export default function MTMemo({ currentUser }) {
       },
       ...tasks,
     ])
-    alert(`「${memo.title}」をタスクに振り分けました（${category}／${member}）`)
+    alert(`「${memo.title}」をタスクに振り分けました（${category}）`)
   }
 
   const distributeToIdea = memo => {
     setIdeas([{
       id: uid(),
       text: `${memo.title}\n${memo.text}`.trim(),
-      author: currentUser || MEMBERS[0],
+      author: currentUser,
       pinned: false,
       createdAt: Date.now(),
     }, ...ideas])
@@ -223,10 +221,9 @@ export default function MTMemo({ currentUser }) {
                 memo={m}
                 partner={partnerById(m.partnerId)}
                 partners={partners}
-                currentUser={currentUser}
                 onRemove={() => removeMemo(m.id)}
                 onChangePartner={pid => updateMemoPartner(m.id, pid)}
-                onTask={(c, who) => distributeToTask(m, c, who)}
+                onTask={c => distributeToTask(m, c)}
                 onIdea={() => distributeToIdea(m)}
               />
             ))
@@ -343,10 +340,9 @@ function PartnersTab({ partners, setPartners, memos, onOpenMemos }) {
   )
 }
 
-function DistributeMemo({ memo, partner, partners, currentUser, onRemove, onChangePartner, onTask, onIdea }) {
+function DistributeMemo({ memo, partner, partners, onRemove, onChangePartner, onTask, onIdea }) {
   const [showDist, setShowDist] = useState(false)
   const [cat, setCat] = useState('健美屋')
-  const [member, setMember] = useState(currentUser || MEMBERS[0])
 
   return (
     <div className="mt-memo">
@@ -388,10 +384,7 @@ function DistributeMemo({ memo, partner, partners, currentUser, onRemove, onChan
           <select className="select" value={cat} onChange={e => setCat(e.target.value)}>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
-          <select className="select" value={member} onChange={e => setMember(e.target.value)}>
-            {MEMBERS.map(m => <option key={m}>{m}</option>)}
-          </select>
-          <button className="btn btn-small" onClick={() => onTask(cat, member)}>→ タスクへ</button>
+          <button className="btn btn-small" onClick={() => onTask(cat)}>→ タスクへ</button>
           <button className="btn btn-small btn-secondary" onClick={onIdea}>→ アイデアへ</button>
         </div>
       )}

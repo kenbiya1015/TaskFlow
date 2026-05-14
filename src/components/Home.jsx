@@ -70,8 +70,17 @@ export default function Home({ userName, onNavigate }) {
   const [being] = useLocalStorage('tf_being', {})
   const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
+  const [messages] = useLocalStorage('tf_messages', [])
 
   const member = findMember(userName)
+
+  // 未読メッセージ
+  const unreadMessages = useMemo(
+    () => (messages || [])
+      .filter(m => m.to === userName && !m.readAt)
+      .sort((a, b) => b.createdAt - a.createdAt),
+    [messages, userName]
+  )
 
   // 22時以降は翌日表示
   const [nowTick, setNowTick] = useState(() => new Date())
@@ -548,6 +557,28 @@ export default function Home({ userName, onNavigate }) {
         </button>
       </div>
 
+      {unreadMessages.length > 0 && (
+        <div className="message-notify-card" onClick={() => onNavigate?.('members')} role="button" tabIndex={0}>
+          <div className="message-notify-icon">💬</div>
+          <div className="message-notify-body">
+            <div className="message-notify-title">
+              未読メッセージが {unreadMessages.length} 件あります
+            </div>
+            <div className="message-notify-preview">
+              {unreadMessages.slice(0, 2).map(m => (
+                <span key={m.id} className="message-notify-row">
+                  <strong>{m.from}</strong>：{m.text.length > 30 ? m.text.slice(0, 30) + '…' : m.text}
+                </span>
+              ))}
+              {unreadMessages.length > 2 && (
+                <span className="message-notify-more">他 {unreadMessages.length - 2} 件</span>
+              )}
+            </div>
+          </div>
+          <div className="message-notify-arrow">→</div>
+        </div>
+      )}
+
       {showQuickAdd && (
         <div className="card quick-add-card">
           <div className="card-title">
@@ -710,25 +741,26 @@ export default function Home({ userName, onNavigate }) {
         </div>
       </div>
 
-      <div className="home-grid">
-        <div>
-          {renderScheduleCard({
-            heading: scheduleHeading,
-            dateK: displayKey,
-            date: displayDate,
-            items: displayScheduleItems,
-            isPrimary: true,
-          })}
-          {renderScheduleCard({
-            heading: nextHeading,
-            dateK: nextKey,
-            date: nextDate,
-            items: nextScheduleItems,
-            isPrimary: false,
-          })}
-        </div>
+      {/* 2列スケジュール（今日・明日） */}
+      <div className="home-schedule-pair">
+        {renderScheduleCard({
+          heading: scheduleHeading,
+          dateK: displayKey,
+          date: displayDate,
+          items: displayScheduleItems,
+          isPrimary: true,
+        })}
+        {renderScheduleCard({
+          heading: nextHeading,
+          dateK: nextKey,
+          date: nextDate,
+          items: nextScheduleItems,
+          isPrimary: false,
+        })}
+      </div>
 
-        <div>
+      {/* 3カードの行：今日やること / なりたい自分 / 今後の取り組み */}
+      <div className="home-trio">
           {/* 今日やること（編集可） */}
           <div className="card">
             <div className="card-title">
@@ -855,7 +887,10 @@ export default function Home({ userName, onNavigate }) {
               </ul>
             )}
           </div>
+      </div>
 
+      {/* 2カードの行：ロードマップ / 自分のアイデア */}
+      <div className="home-duo">
           {/* ロードマップ（編集可・現在地クリックで設定） */}
           <div className="card">
             <div className="card-title">
@@ -960,7 +995,6 @@ export default function Home({ userName, onNavigate }) {
               ))
             )}
           </div>
-        </div>
       </div>
 
       {/* 全体の戦略・戦術（最下部） */}

@@ -28,7 +28,7 @@ const NAV = [
   { id: 'being',    icon: '🌟', label: 'なりたい自分' },
   { id: 'future',   icon: '🚀', label: '取り組み' },
   { id: 'strategy', icon: '📋', label: '戦略・戦術' },
-  { id: 'members',  icon: '👥', label: 'メンバー管理' },
+  { id: 'members',  icon: '💬', label: 'メンバー伝達' },
   { id: 'settings', icon: '⚙️', label: '設定' },
 ]
 
@@ -43,6 +43,8 @@ const PRIMARY_TAB_IDS = PRIMARY_TABS.map(t => t.id)
 
 export default function App() {
   const [currentUser, setCurrentUser] = useLocalStorage('tf_currentUser', '')
+  const [messages] = useLocalStorage('tf_messages', [])
+  const unreadCount = (messages || []).filter(m => m.to === currentUser && !m.readAt).length
   const [page, setPage] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -140,6 +142,9 @@ export default function App() {
             >
               <span className="nav-icon">{n.icon}</span>
               <span>{n.label}</span>
+              {n.id === 'members' && unreadCount > 0 && (
+                <span className="nav-badge">{unreadCount}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -214,6 +219,9 @@ export default function App() {
             >
               <span className="mobile-menu-item-icon">{n.icon}</span>
               <span className="mobile-menu-item-label">{n.label}</span>
+              {n.id === 'members' && unreadCount > 0 && (
+                <span className="nav-badge" style={{ marginLeft: 'auto' }}>{unreadCount}</span>
+              )}
               {page === n.id && <span className="mobile-menu-item-mark" aria-hidden>●</span>}
             </button>
           ))}

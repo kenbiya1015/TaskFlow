@@ -10,6 +10,8 @@ export const STRATEGY_CATEGORIES = [
   { id: 'other',            name: 'その他',         emoji: '📁', color: '#4a5160' },
 ]
 
+const PALETTE = ['#2f6fed', '#1f9e6a', '#d97706', '#a52663', '#4a5160', '#9333ea', '#0891b2', '#dc2626', '#65a30d', '#0d9488']
+
 function emptyEntry() {
   return { strategy: '', tactics: [] }
 }
@@ -32,7 +34,15 @@ const DEFAULT_OVERALL = {
 export default function Strategy({ currentUser }) {
   const [overall, setOverall] = useUserScopedStorage('tf_strategy_overall_by_user', currentUser, DEFAULT_OVERALL)
   const [data, setData] = useUserScopedStorage('tf_strategies_by_user', currentUser, DEFAULT_STRATEGIES)
+  const [categories, setCategories] = useUserScopedStorage('tf_strategy_categories_by_user', currentUser, STRATEGY_CATEGORIES)
   const [drafts, setDrafts] = useState({})
+  const [editingCatId, setEditingCatId] = useState(null)
+
+  // 新しいカテゴリ追加フォーム
+  const [showNewCat, setShowNewCat] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatEmoji, setNewCatEmoji] = useState('📌')
+  const [newCatColor, setNewCatColor] = useState(PALETTE[0])
 
   // 既存ユーザーが空オブジェクト {} を持っている場合のみ、初期データを投入する
   useEffect(() => {
@@ -41,6 +51,9 @@ export default function Strategy({ currentUser }) {
     }
     if (overall && typeof overall === 'object' && !overall.strategy && !overall.tactics) {
       setOverall(DEFAULT_OVERALL)
+    }
+    if (!Array.isArray(categories) || categories.length === 0) {
+      setCategories(STRATEGY_CATEGORIES)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -80,6 +93,36 @@ export default function Strategy({ currentUser }) {
     })
   }
 
+  // カテゴリ操作
+  const addCategory = () => {
+    if (!newCatName.trim()) return
+    const cat = {
+      id: 'cat-' + uid(),
+      name: newCatName.trim(),
+      emoji: newCatEmoji || '📌',
+      color: newCatColor,
+    }
+    setCategories([...(categories || []), cat])
+    setNewCatName('')
+    setNewCatEmoji('📌')
+    setNewCatColor(PALETTE[0])
+    setShowNewCat(false)
+  }
+
+  const updateCategory = (id, patch) => {
+    setCategories((categories || []).map(c => c.id === id ? { ...c, ...patch } : c))
+  }
+
+  const removeCategory = (id) => {
+    if (!confirm('このカテゴリを削除します。中の戦略・戦術データも消えます。よろしいですか？')) return
+    setCategories((categories || []).filter(c => c.id !== id))
+    const next = { ...data }
+    delete next[id]
+    setData(next)
+  }
+
+  const cats = Array.isArray(categories) && categories.length > 0 ? categories : STRATEGY_CATEGORIES
+
   return (
     <div>
       <div className="page-header">
@@ -87,12 +130,53 @@ export default function Strategy({ currentUser }) {
           <div className="page-title">戦略・戦術</div>
           <div className="page-subtitle">STRATEGY　·　TACTICS　·　カテゴリ別</div>
         </div>
+        <button
+          className="btn btn-small btn-secondary"
+          onClick={() => setShowNewCat(s => !s)}
+        >{showNewCat ? '閉じる' : '＋ カテゴリ追加'}</button>
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.7 }}>
         🧭 <strong>戦略</strong>は「大きな方向性・なぜそれをやるのか」、
         ⚙️ <strong>戦術</strong>は「具体的にいつ・なにをやるか」を分けて書き留めます。
       </div>
+
+      {showNewCat && (
+        <div className="card">
+          <div className="card-title">＋ 新しいカテゴリ</div>
+          <div className="form-row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              className="text-input"
+              style={{ width: 70, textAlign: 'center', flex: 'none' }}
+              value={newCatEmoji}
+              onChange={e => setNewCatEmoji(e.target.value)}
+              placeholder="📌"
+              maxLength={4}
+            />
+            <input
+              className="text-input"
+              placeholder="カテゴリ名（例：研究開発）"
+              value={newCatName}
+              onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addCategory()}
+            />
+            <div className="strategy-color-palette">
+              {PALETTE.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`strategy-color-dot ${newCatColor === c ? 'on' : ''}`}
+                  style={{ background: c }}
+                  onClick={() => setNewCatColor(c)}
+                  title={c}
+                  aria-label={`色 ${c}`}
+                />
+              ))}
+            </div>
+            <button className="btn" onClick={addCategory}>追加</button>
+          </div>
+        </div>
+      )}
 
       <div className="strategy-card strategy-overall">
         <div className="strategy-card-header" style={{ borderLeftColor: 'var(--accent)' }}>
@@ -126,18 +210,65 @@ export default function Strategy({ currentUser }) {
         </div>
       </div>
 
-      {STRATEGY_CATEGORIES.map(cat => {
+      {cats.map(cat => {
         const e = get(cat.id)
         const open = (e.tactics || []).filter(t => !t.done).length
         const total = (e.tactics || []).length
+        const isEditing = editingCatId === cat.id
         return (
           <div key={cat.id} className="strategy-card">
             <div className="strategy-card-header" style={{ borderLeftColor: cat.color }}>
-              <div className="strategy-cat-name">
-                <span style={{ fontSize: 22, marginRight: 8 }}>{cat.emoji}</span>
-                {cat.name}
+              <div className="strategy-cat-name" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isEditing ? (
+                  <>
+                    <input
+                      className="text-input"
+                      style={{ width: 60, textAlign: 'center', flex: 'none', fontSize: 18 }}
+                      value={cat.emoji}
+                      onChange={ev => updateCategory(cat.id, { emoji: ev.target.value })}
+                      maxLength={4}
+                    />
+                    <input
+                      className="text-input"
+                      style={{ flex: 1, minWidth: 120, fontSize: 15, fontWeight: 700 }}
+                      value={cat.name}
+                      onChange={ev => updateCategory(cat.id, { name: ev.target.value })}
+                    />
+                    <div className="strategy-color-palette">
+                      {PALETTE.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`strategy-color-dot ${cat.color === c ? 'on' : ''}`}
+                          style={{ background: c }}
+                          onClick={() => updateCategory(cat.id, { color: c })}
+                          aria-label={`色 ${c}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 22 }}>{cat.emoji}</span>
+                    <span>{cat.name}</span>
+                  </>
+                )}
               </div>
-              <div className="strategy-cat-count">戦術 {open}/{total}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="strategy-cat-count">戦術 {open}/{total}</div>
+                <button
+                  className="btn btn-small btn-secondary"
+                  onClick={() => setEditingCatId(isEditing ? null : cat.id)}
+                  title={isEditing ? '編集を終了' : 'タイトル・アイコン・色を編集'}
+                >{isEditing ? '完了' : '✏️'}</button>
+                {isEditing && (
+                  <button
+                    className="btn-icon"
+                    onClick={() => removeCategory(cat.id)}
+                    title="カテゴリを削除"
+                  >×</button>
+                )}
+              </div>
             </div>
 
             <div className="strategy-body">

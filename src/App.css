@@ -3001,6 +3001,342 @@ body.kanban-touch-dragging-active .kanban-card-v2.is-dragging {
   opacity: 0.92;
 }
 
+/* ===== なりたい自分 実践項目 D&D ===== */
+.practice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  transition: background 0.12s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.practice-row:active { cursor: grabbing; }
+
+.practice-row.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-soft, #ecfdf5);
+}
+
+.practice-row.is-dragging {
+  opacity: 0.45;
+}
+
+.practice-drag-handle {
+  color: var(--text-muted);
+  cursor: grab;
+  user-select: none;
+  font-weight: 700;
+  letter-spacing: -1px;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+body.practice-touch-dragging {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: contain;
+}
+
+body.practice-touch-dragging .practice-row.is-dragging {
+  transform: scale(1.02);
+  box-shadow: 0 8px 20px -6px rgba(13, 148, 136, 0.4);
+  opacity: 0.92;
+}
+
+/* ===== 戦略・戦術 カラーパレット ===== */
+.strategy-color-palette {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.strategy-color-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.strategy-color-dot:hover {
+  transform: scale(1.12);
+}
+
+.strategy-color-dot.on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
+}
+
+/* ===== メンバー伝達（メッセージ）UI ===== */
+.message-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.message-tab {
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+
+.message-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.message-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.message-tab.active .message-badge {
+  background: #fff;
+  color: var(--danger);
+}
+
+.message-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.message-tab.active .message-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.message-card.unread {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-soft, #ecfdf5) 0%, var(--surface) 38%);
+  box-shadow: 0 4px 14px -6px rgba(13, 148, 136, 0.28);
+}
+
+.message-card-sent { opacity: 0.92; }
+
+.message-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.message-card-from {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.message-from-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.message-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.message-read-mark {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.message-text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* マイページ用 メッセージ通知カード */
+.message-notify-card {
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1px solid #f59e0b;
+  box-shadow: 0 6px 18px -8px rgba(245, 158, 11, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+
+.message-notify-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px -8px rgba(245, 158, 11, 0.5);
+}
+
+.message-notify-icon {
+  font-size: 28px;
+  flex: none;
+}
+
+.message-notify-body { flex: 1; min-width: 0; }
+
+.message-notify-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #9a3412;
+  margin-bottom: 4px;
+}
+
+.message-notify-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.message-notify-row {
+  font-size: 12px;
+  color: #7c2d12;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-notify-more {
+  font-size: 11px;
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.message-notify-arrow {
+  font-size: 20px;
+  color: #9a3412;
+  flex: none;
+}
+
+/* ===== サイドナビ 未読バッジ ===== */
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: auto;
+  border-radius: 10px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ===== マイページ 新レイアウト ===== */
+.home-schedule-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.home-trio {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.home-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.home-schedule-pair > .card,
+.home-trio > .card,
+.home-duo > .card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1100px) {
+  .home-trio { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .home-schedule-pair { grid-template-columns: 1fr; }
+  .home-trio { grid-template-columns: 1fr; }
+  .home-duo { grid-template-columns: 1fr; }
+}
+
 /* ===== カンバンカード内 スケジュール追加ポップオーバー ===== */
 .kanban-sched-pop {
   background: var(--surface);
