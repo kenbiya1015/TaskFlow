@@ -7,12 +7,13 @@ import { fetchEvents } from '../lib/googleCalendar'
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
 const PRIORITY_OPTIONS = ['A', 'B', 'C', 'D']
-const PRIORITY_LABELS = { A: '最重要', B: '重要', C: '通常', D: '低' }
+const PRIORITY_LABELS = { A: '最優先', B: '効率化', C: '将来性', D: '後回し' }
+// 2x2 配置：左上A・右上C ／ 左下B・右下D
 const KANBAN_COLS = [
-  { key: 'A', label: '最重要' },
-  { key: 'B', label: '重要' },
-  { key: 'C', label: '通常' },
-  { key: 'D', label: '低' },
+  { key: 'A', label: '最優先' },
+  { key: 'C', label: '将来性' },
+  { key: 'B', label: '効率化' },
+  { key: 'D', label: '後回し' },
 ]
 const LATE_NIGHT_HOUR = 22
 
@@ -65,7 +66,7 @@ export default function Home({ userName, onNavigate }) {
   const [eventDone, setEventDone] = useUserScopedStorage('tf_event_done_by_user', userName, {})
 
   // 共有データ
-  const [schedule] = useLocalStorage('tf_schedule', {})
+  const [schedule, setSchedule] = useLocalStorage('tf_schedule', {})
   const [being] = useLocalStorage('tf_being', {})
   const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
@@ -83,6 +84,8 @@ export default function Home({ userName, onNavigate }) {
     ? new Date(nowTick.getFullYear(), nowTick.getMonth(), nowTick.getDate() + 1)
     : new Date(nowTick.getFullYear(), nowTick.getMonth(), nowTick.getDate())
   const displayKey = dateKeyOf(displayDate)
+  const nextDate = new Date(displayDate.getFullYear(), displayDate.getMonth(), displayDate.getDate() + 1)
+  const nextKey = dateKeyOf(nextDate)
   const today = todayKey()
 
   const myToken = allTokens[userName] || null
@@ -96,7 +99,7 @@ export default function Home({ userName, onNavigate }) {
     if (!tokenValid) return
     setGcalBusy(true)
     const from = new Date(); from.setHours(0, 0, 0, 0)
-    const to = new Date(from); to.setDate(to.getDate() + 2)
+    const to = new Date(from); to.setDate(to.getDate() + 3)
     fetchEvents(myToken.access_token, from, to)
       .then(items => {
         if (cancelled) return
@@ -110,10 +113,11 @@ export default function Home({ userName, onNavigate }) {
         })
         setAllEvents(prev => {
           const userEvents = { ...(prev[userName] || {}) }
-          const tomorrow = new Date(from); tomorrow.setDate(tomorrow.getDate() + 1)
-          const tkey = dateKeyOf(tomorrow)
-          userEvents[today] = grouped[today] || []
-          userEvents[tkey] = grouped[tkey] || []
+          for (let i = 0; i < 3; i++) {
+            const d = new Date(from); d.setDate(d.getDate() + i)
+            const k = dateKeyOf(d)
+            userEvents[k] = grouped[k] || []
+          }
           userEvents.__syncedAt = Date.now()
           return { ...prev, [userName]: userEvents }
         })
@@ -146,9 +150,9 @@ export default function Home({ userName, onNavigate }) {
   }, [tasks])
 
   // 表示対象日のスケジュール（GCal + 手動入力をマージ）
-  const displayScheduleItems = useMemo(() => {
+  const buildScheduleItems = (dateK) => {
     const list = []
-    const day = schedule[displayKey]?.[userName] || {}
+    const day = schedule[dateK]?.[userName] || {}
     Object.keys(day).forEach(h => {
       (day[h] || []).forEach(e => list.push({
         id: e.id,
@@ -158,7 +162,7 @@ export default function Home({ userName, onNavigate }) {
         category: e.category,
       }))
     })
-    const events = (myEvents[displayKey] || []).filter(Boolean)
+    const events = (myEvents[dateK] || []).filter(Boolean)
     events.forEach(ev => {
       let hour = 0
       if (!ev.allDay && ev.start) {
@@ -179,10 +183,49 @@ export default function Home({ userName, onNavigate }) {
       if (!a.allDay && b.allDay) return 1
       return a.hour - b.hour
     })
-  }, [schedule, myEvents, displayKey, userName])
+  }
+
+  const displayScheduleItems = useMemo(
+    () => buildScheduleItems(displayKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schedule, myEvents, displayKey, userName]
+  )
+  const nextScheduleItems = useMemo(
+    () => buildScheduleItems(nextKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schedule, myEvents, nextKey, userName]
+  )
 
   const toggleEventDone = (id) => {
     setEventDone({ ...(eventDone || {}), [id]: !(eventDone || {})[id] })
+  }
+
+  const removeTask = (id) => {
+    setTasks(tasks.filter(t => t.id !== id))
+  }
+
+  // スケジュールへの予定追加（1カードずつ開閉）
+  const [openAddFor, setOpenAddFor] = useState(null) // dateKey
+  const [addHour, setAddHour] = useState(9)
+  const [addText, setAddText] = useState('')
+
+  const addScheduleEntry = (dateK, hour, text) => {
+    setSchedule(prev => {
+      const next = { ...prev }
+      next[dateK] = { ...(next[dateK] || {}) }
+      next[dateK][userName] = { ...(next[dateK][userName] || {}) }
+      const list = next[dateK][userName][hour] || []
+      next[dateK][userName][hour] = [...list, { id: uid(), text }]
+      return next
+    })
+  }
+
+  const submitScheduleAdd = (dateK) => {
+    const t = addText.trim()
+    if (!t) return
+    addScheduleEntry(dateK, addHour, t)
+    setAddText('')
+    setOpenAddFor(null)
   }
 
   const myIdeas = useMemo(() => ideas.slice(0, 5), [ideas])
@@ -280,6 +323,115 @@ export default function Home({ userName, onNavigate }) {
   }
 
   const scheduleHeading = isLateNight ? '明日のスケジュール' : '今日のスケジュール'
+  const nextHeading = isLateNight ? '明後日のスケジュール' : '明日のスケジュール'
+  const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6)
+
+  const formatScheduleDate = (d) =>
+    `${d.getMonth() + 1}/${d.getDate()}（${WEEK_DAYS_JP[d.getDay()]}）`
+
+  const renderScheduleCard = ({ heading, dateK, date, items, isPrimary }) => {
+    const showing = openAddFor === dateK
+    return (
+      <div className="card" key={dateK}>
+        <div className="card-title">
+          📅 {heading}
+          <span style={{ float: 'right', display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+            <span>{formatScheduleDate(date)}</span>
+            {isPrimary && tokenValid && (
+              <span>{gcalBusy ? '同期中...' : 'GCal 連携中'}</span>
+            )}
+            {isPrimary && !tokenValid && <span>GCal 未連携</span>}
+            {isPrimary && isLateNight && (
+              <span className="late-night-pill" title="22時以降は翌日表示に自動切替">夜モード</span>
+            )}
+            <button
+              className="btn btn-small"
+              onClick={() => {
+                if (showing) setOpenAddFor(null)
+                else { setOpenAddFor(dateK); setAddText(''); setAddHour(9) }
+              }}
+            >{showing ? '× 閉じる' : '＋ 予定追加'}</button>
+          </span>
+        </div>
+
+        {showing && (
+          <div className="home-schedule-add">
+            <select
+              className="select"
+              value={addHour}
+              onChange={e => setAddHour(Number(e.target.value))}
+            >
+              {PICK_HOURS.map(h => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+            <input
+              className="text-input"
+              placeholder="予定を入力..."
+              autoFocus
+              value={addText}
+              onChange={e => setAddText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') submitScheduleAdd(dateK)
+                if (e.key === 'Escape') { setAddText(''); setOpenAddFor(null) }
+              }}
+            />
+            <button className="btn btn-small" onClick={() => submitScheduleAdd(dateK)}>追加</button>
+          </div>
+        )}
+
+        {items.length === 0 ? (
+          <div className="empty" style={{ padding: 18 }}>
+            予定はありません
+            {isPrimary && !tokenValid && (
+              <div style={{ marginTop: 8, fontSize: 12 }}>
+                <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
+                  📅 Googleカレンダーを連携する
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="merged-schedule">
+            {items.map(e => {
+              const done = !!(eventDone || {})[e.id]
+              return (
+                <div
+                  key={e.id}
+                  className={`merged-schedule-row src-${e.source} ${done ? 'is-done' : ''}`}
+                  title={e.source === 'gcal' ? 'Google カレンダー' : '手動入力'}
+                >
+                  <button
+                    className={`schedule-done-check ${done ? 'on' : ''}`}
+                    onClick={() => toggleEventDone(e.id)}
+                    title={done ? '未完了に戻す' : '完了にする'}
+                  >{done ? '✓' : ''}</button>
+                  <span className="merged-schedule-time">
+                    {e.source === 'gcal'
+                      ? (e.allDay ? '終日' : e.timeRange)
+                      : `${String(e.hour).padStart(2, '0')}:00`}
+                  </span>
+                  <span className="merged-schedule-text">
+                    {e.source === 'gcal' && <span className="merged-schedule-mark">🗓</span>}
+                    {e.text}
+                  </span>
+                  {e.category && (
+                    <span className={`tag tag-${e.category}`} style={{ fontSize: 10 }}>{e.category}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div style={{ marginTop: 10, textAlign: 'right' }}>
+          <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
+            編集 →
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -352,32 +504,6 @@ export default function Home({ userName, onNavigate }) {
         </div>
       )}
 
-      {/* 全体の戦略・戦術 */}
-      <div className="card overall-strategy-card">
-        <div className="card-title">
-          🌐 {userName} さんの全体戦略・戦術
-          <button
-            className="btn btn-small btn-secondary"
-            style={{ float: 'right' }}
-            onClick={() => onNavigate?.('strategy')}
-          >→ 編集</button>
-        </div>
-        <div className="overall-grid">
-          <div className="overall-block">
-            <div className="overall-label">🧭 戦略</div>
-            <div className="overall-text">
-              {overall.strategy || <span className="overall-empty">戦略ページから入力してください</span>}
-            </div>
-          </div>
-          <div className="overall-block">
-            <div className="overall-label">⚙️ 戦術</div>
-            <div className="overall-text">
-              {overall.tactics || <span className="overall-empty">戦略ページから入力してください</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* タスク4軸ボード */}
       <div className="card">
         <div className="card-title">
@@ -388,14 +514,14 @@ export default function Home({ userName, onNavigate }) {
             onClick={() => onNavigate?.('tasks')}
           >すべて見る →</button>
         </div>
-        <div className="kanban-board kanban-board-home">
+        <div className="kanban-board kanban-board-2x2 kanban-board-home">
           {KANBAN_COLS.map(col => {
             const items = tasksByPriority[col.key] || []
             return (
               <div key={col.key} className={`kanban-column kanban-col-${col.key}`}>
-                <div className="kanban-col-header">
-                  <span className={`priority-badge priority-${col.key}`}>{col.key}</span>
-                  <span className="kanban-col-label">{col.label}</span>
+                <div className="kanban-col-header kanban-col-header-lg">
+                  <span className={`priority-badge priority-${col.key} priority-badge-lg`}>{col.key}</span>
+                  <span className="kanban-col-label kanban-col-label-lg">{col.label}</span>
                   <span className="kanban-col-count">{items.length}</span>
                 </div>
                 <div className="kanban-col-body">
@@ -405,8 +531,15 @@ export default function Home({ userName, onNavigate }) {
                     items.slice(0, 6).map(t => {
                       const ds = dueStatus(t.due)
                       return (
-                        <div key={t.id} className="kanban-card">
-                          <div className="kanban-card-text">{t.text}</div>
+                        <div key={t.id} className="kanban-card kanban-card-lg">
+                          <div className="kanban-card-top">
+                            <span className="kanban-card-text">{t.text}</span>
+                            <button
+                              className="btn-icon kanban-card-del"
+                              onClick={() => removeTask(t.id)}
+                              title="削除"
+                            >×</button>
+                          </div>
                           <div className="kanban-card-meta">
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
                             {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
@@ -427,67 +560,20 @@ export default function Home({ userName, onNavigate }) {
 
       <div className="home-grid">
         <div>
-          <div className="card">
-            <div className="card-title">
-              📅 {scheduleHeading}（Google カレンダー統合）
-              <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
-                {tokenValid
-                  ? (gcalBusy ? '同期中...' : `GCal 連携中`)
-                  : 'GCal 未連携'}
-                {isLateNight && (
-                  <span className="late-night-pill" title="22時以降は翌日表示に自動切替">夜モード</span>
-                )}
-              </span>
-            </div>
-            {displayScheduleItems.length === 0 ? (
-              <div className="empty" style={{ padding: 20 }}>
-                {isLateNight ? '明日の予定はありません' : '本日の予定はありません'}
-                {!tokenValid && (
-                  <div style={{ marginTop: 8, fontSize: 12 }}>
-                    <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
-                      📅 Googleカレンダーを連携する
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="merged-schedule">
-                {displayScheduleItems.map(e => {
-                  const done = !!(eventDone || {})[e.id]
-                  return (
-                    <div
-                      key={e.id}
-                      className={`merged-schedule-row src-${e.source} ${done ? 'is-done' : ''}`}
-                      title={e.source === 'gcal' ? 'Google カレンダー' : '手動入力'}
-                    >
-                      <button
-                        className={`schedule-done-check ${done ? 'on' : ''}`}
-                        onClick={() => toggleEventDone(e.id)}
-                        title={done ? '未完了に戻す' : '完了にする'}
-                      >{done ? '✓' : ''}</button>
-                      <span className="merged-schedule-time">
-                        {e.source === 'gcal'
-                          ? (e.allDay ? '終日' : e.timeRange)
-                          : `${String(e.hour).padStart(2, '0')}:00`}
-                      </span>
-                      <span className="merged-schedule-text">
-                        {e.source === 'gcal' && <span className="merged-schedule-mark">🗓</span>}
-                        {e.text}
-                      </span>
-                      {e.category && (
-                        <span className={`tag tag-${e.category}`} style={{ fontSize: 10 }}>{e.category}</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            <div style={{ marginTop: 10, textAlign: 'right' }}>
-              <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
-                編集 →
-              </button>
-            </div>
-          </div>
+          {renderScheduleCard({
+            heading: scheduleHeading,
+            dateK: displayKey,
+            date: displayDate,
+            items: displayScheduleItems,
+            isPrimary: true,
+          })}
+          {renderScheduleCard({
+            heading: nextHeading,
+            dateK: nextKey,
+            date: nextDate,
+            items: nextScheduleItems,
+            isPrimary: false,
+          })}
         </div>
 
         <div>
@@ -721,6 +807,32 @@ export default function Home({ userName, onNavigate }) {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* 全体の戦略・戦術（最下部） */}
+      <div className="card overall-strategy-card overall-strategy-bottom">
+        <div className="card-title">
+          🌐 {userName} さんの全体戦略・戦術
+          <button
+            className="btn btn-small btn-secondary"
+            style={{ float: 'right' }}
+            onClick={() => onNavigate?.('strategy')}
+          >→ 編集</button>
+        </div>
+        <div className="overall-grid">
+          <div className="overall-block">
+            <div className="overall-label">🧭 戦略</div>
+            <div className="overall-text">
+              {overall.strategy || <span className="overall-empty">戦略ページから入力してください</span>}
+            </div>
+          </div>
+          <div className="overall-block">
+            <div className="overall-label">⚙️ 戦術</div>
+            <div className="overall-text">
+              {overall.tactics || <span className="overall-empty">戦略ページから入力してください</span>}
+            </div>
           </div>
         </div>
       </div>

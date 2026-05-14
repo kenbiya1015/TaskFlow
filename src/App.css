@@ -2368,8 +2368,14 @@
   gap: 12px;
 }
 
-.kanban-board-home .kanban-card {
-  font-size: 12px;
+/* 2x2 レイアウト：左上A・右上C ／ 左下B・右下D */
+.kanban-board-2x2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.kanban-board-home .kanban-card-text {
+  font-size: 14px;
 }
 
 .kanban-column {
@@ -2577,6 +2583,94 @@
 
 .timeline-entry.is-done {
   text-decoration: line-through;
+}
+
+/* ===== Kanban 大型ヘッダー & 大型カード（マイページの2x2） ===== */
+.kanban-col-header-lg {
+  padding: 10px 8px 14px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.priority-badge-lg {
+  min-width: 40px;
+  height: 32px;
+  font-size: 16px;
+  padding: 0 10px;
+  border-radius: 8px;
+  letter-spacing: 0.06em;
+}
+
+.kanban-col-label-lg {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.kanban-col-A .kanban-col-label-lg { color: #b91c1c; }
+.kanban-col-B .kanban-col-label-lg { color: #c2410c; }
+.kanban-col-C .kanban-col-label-lg { color: #1d4ed8; }
+.kanban-col-D .kanban-col-label-lg { color: #475569; }
+
+.kanban-card-lg {
+  padding: 12px 14px;
+}
+
+.kanban-card-lg .kanban-card-text {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.kanban-card-lg .kanban-card-meta { gap: 6px; }
+
+.kanban-card-del {
+  font-size: 16px !important;
+  line-height: 1;
+  padding: 4px 8px !important;
+  align-self: start;
+  color: var(--text-muted);
+}
+
+.kanban-card-del:hover {
+  color: var(--danger);
+  background: #fee2e2;
+}
+
+/* 2x2 のカラム自体も少しゆとり */
+.kanban-board-2x2 .kanban-column {
+  padding: 14px 14px 16px;
+  min-height: 220px;
+}
+
+/* ===== マイページのスケジュール追加フォーム ===== */
+.home-schedule-add {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.home-schedule-add .select {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.home-schedule-add .text-input {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+/* ===== 全体戦略カード（最下部配置） ===== */
+.overall-strategy-bottom {
+  margin-top: 24px;
 }
 
 /* ===== 夜モードピル ===== */

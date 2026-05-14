@@ -14,10 +14,10 @@ function normalizePriority(p) {
 }
 
 const PRIORITY_LABELS = {
-  A: '最重要',
-  B: '重要',
-  C: '通常',
-  D: '低',
+  A: '最優先',
+  B: '効率化',
+  C: '将来性',
+  D: '後回し',
 }
 
 function dueStatus(due) {
@@ -113,16 +113,6 @@ export default function TaskList({ currentUser }) {
       })
   }, [tasks, filter])
 
-  const stats = useMemo(() => {
-    const open = tasks.filter(t => !t.done)
-    return {
-      total: tasks.length,
-      open: open.length,
-      done: tasks.length - open.length,
-      A: open.filter(t => normalizePriority(t.priority) === 'A').length,
-    }
-  }, [tasks])
-
   // カンバン用：カテゴリフィルタを適用しつつ A/B/C/D にグループ分け（未完了のみ）
   const tasksByPriority = useMemo(() => {
     const groups = { A: [], B: [], C: [], D: [] }
@@ -161,13 +151,6 @@ export default function TaskList({ currentUser }) {
         </div>
       </div>
 
-      <div className="stats-bar">
-        <div className="stat-tile"><div className="stat-num">{stats.total}</div><div className="stat-label">総タスク</div></div>
-        <div className="stat-tile"><div className="stat-num">{stats.open}</div><div className="stat-label">未完了</div></div>
-        <div className="stat-tile"><div className="stat-num">{stats.done}</div><div className="stat-label">完了</div></div>
-        <div className="stat-tile"><div className="stat-num" style={{ color: 'var(--danger)' }}>{stats.A}</div><div className="stat-label">A（最重要）</div></div>
-      </div>
-
       <div className="card">
         <div className="card-title">新しいタスク</div>
         <div className="task-add-form">
@@ -203,8 +186,8 @@ export default function TaskList({ currentUser }) {
       </div>
 
       {view === 'kanban' ? (
-        <div className="kanban-board kanban-board-full">
-          {PRIORITY_OPTIONS.map(col => {
+        <div className="kanban-board kanban-board-2x2 kanban-board-full">
+          {['A', 'C', 'B', 'D'].map(col => {
             const items = tasksByPriority[col] || []
             const isOver = dragOverCol === col
             return (
@@ -229,9 +212,9 @@ export default function TaskList({ currentUser }) {
                   setDragOverId(null)
                 }}
               >
-                <div className="kanban-col-header">
-                  <span className={`priority-badge priority-${col}`}>{col}</span>
-                  <span className="kanban-col-label">{PRIORITY_LABELS[col]}</span>
+                <div className="kanban-col-header kanban-col-header-lg">
+                  <span className={`priority-badge priority-${col} priority-badge-lg`}>{col}</span>
+                  <span className="kanban-col-label kanban-col-label-lg">{PRIORITY_LABELS[col]}</span>
                   <span className="kanban-col-count">{items.length}</span>
                 </div>
                 <div className="kanban-col-body">
@@ -243,7 +226,7 @@ export default function TaskList({ currentUser }) {
                       return (
                         <div
                           key={t.id}
-                          className="kanban-card"
+                          className="kanban-card kanban-card-lg"
                           draggable
                           onDragStart={e => {
                             e.dataTransfer.effectAllowed = 'move'
