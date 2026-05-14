@@ -204,6 +204,49 @@ export default function Home({ userName, onNavigate }) {
     setTasks(tasks.filter(t => t.id !== id))
   }
 
+  const toggleTaskDone = (id) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  }
+
+  // タスクカードからスケジュールへ追加（タスクID別にポップオーバー開閉）
+  const [taskSchedMenuFor, setTaskSchedMenuFor] = useState(null)
+  const [taskSchedDay, setTaskSchedDay] = useState('today')
+  const [taskSchedHour, setTaskSchedHour] = useState(9)
+  const [taskSchedMsg, setTaskSchedMsg] = useState('')
+
+  const openTaskSchedMenu = (taskId) => {
+    setTaskSchedMenuFor(taskId)
+    setTaskSchedDay('today')
+    setTaskSchedHour(9)
+    setTaskSchedMsg('')
+  }
+  const closeTaskSchedMenu = () => {
+    setTaskSchedMenuFor(null)
+    setTaskSchedMsg('')
+  }
+  const submitTaskScheduleAdd = (task) => {
+    const base = new Date()
+    base.setHours(0, 0, 0, 0)
+    if (taskSchedDay === 'tomorrow') base.setDate(base.getDate() + 1)
+    const dateK = dateKeyOf(base)
+    setSchedule(prev => {
+      const next = { ...prev }
+      next[dateK] = { ...(next[dateK] || {}) }
+      next[dateK][userName] = { ...(next[dateK][userName] || {}) }
+      const list = next[dateK][userName][taskSchedHour] || []
+      next[dateK][userName][taskSchedHour] = [...list, {
+        id: uid(),
+        text: task.text,
+        taskId: task.id,
+        category: task.category,
+        priority: task.priority,
+      }]
+      return next
+    })
+    setTaskSchedMsg(`${taskSchedDay === 'today' ? '今日' : '明日'} ${String(taskSchedHour).padStart(2, '0')}:00 に追加しました`)
+    setTimeout(() => closeTaskSchedMenu(), 900)
+  }
+
   // スケジュールへの予定追加（1カードずつ開閉）
   const [openAddFor, setOpenAddFor] = useState(null) // dateKey
   const [addHour, setAddHour] = useState(9)
@@ -504,10 +547,10 @@ export default function Home({ userName, onNavigate }) {
         </div>
       )}
 
-      {/* タスク4軸ボード */}
+      {/* タスク管理 */}
       <div className="card">
         <div className="card-title">
-          🗂 タスク 4軸ボード（A・B・C・D）
+          🗂 タスク管理
           <button
             className="btn btn-small btn-secondary"
             style={{ float: 'right' }}
@@ -531,9 +574,25 @@ export default function Home({ userName, onNavigate }) {
                     items.slice(0, 6).map(t => {
                       const ds = dueStatus(t.due)
                       return (
-                        <div key={t.id} className="kanban-card kanban-card-lg">
-                          <div className="kanban-card-top">
-                            <span className="kanban-card-text">{t.text}</span>
+                        <div key={t.id} className={`kanban-card kanban-card-home-v2 ${t.done ? 'is-done' : ''}`}>
+                          <div className="kanban-card-meta">
+                            <span className={`tag tag-${t.category}`}>{t.category}</span>
+                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                          </div>
+                          <div className="kanban-card-text">{t.text}</div>
+                          <div className="kanban-card-action-row">
+                            <button
+                              className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
+                              onClick={() => toggleTaskDone(t.id)}
+                              title={t.done ? '未完了に戻す' : '完了にする'}
+                              aria-label="完了の切り替え"
+                            >✓</button>
+                            <button
+                              className={`kanban-card-btn kanban-card-sched ${taskSchedMenuFor === t.id ? 'on' : ''}`}
+                              onClick={() => taskSchedMenuFor === t.id ? closeTaskSchedMenu() : openTaskSchedMenu(t.id)}
+                              title="スケジュールに追加"
+                              aria-label="スケジュールに追加"
+                            >📅</button>
                             <button
                               className="kanban-card-btn kanban-card-del"
                               onClick={() => removeTask(t.id)}
@@ -541,10 +600,38 @@ export default function Home({ userName, onNavigate }) {
                               aria-label="タスクを削除"
                             >🗑</button>
                           </div>
-                          <div className="kanban-card-meta">
-                            <span className={`tag tag-${t.category}`}>{t.category}</span>
-                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
-                          </div>
+                          {taskSchedMenuFor === t.id && (
+                            <div className="kanban-sched-pop" onClick={e => e.stopPropagation()}>
+                              <div className="kanban-sched-title">📅 スケジュールに追加</div>
+                              <div className="kanban-sched-day-row">
+                                <button
+                                  className={`kanban-sched-day ${taskSchedDay === 'today' ? 'on' : ''}`}
+                                  onClick={() => setTaskSchedDay('today')}
+                                >今日</button>
+                                <button
+                                  className={`kanban-sched-day ${taskSchedDay === 'tomorrow' ? 'on' : ''}`}
+                                  onClick={() => setTaskSchedDay('tomorrow')}
+                                >明日</button>
+                              </div>
+                              <div className="kanban-sched-hour-row">
+                                <label className="kanban-sched-label">時刻</label>
+                                <select
+                                  className="select"
+                                  value={taskSchedHour}
+                                  onChange={e => setTaskSchedHour(Number(e.target.value))}
+                                >
+                                  {PICK_HOURS.map(h => (
+                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="kanban-sched-actions">
+                                <button className="btn btn-small btn-secondary" onClick={closeTaskSchedMenu}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => submitTaskScheduleAdd(t)}>＋ 追加</button>
+                              </div>
+                              {taskSchedMsg && <div className="kanban-sched-msg">{taskSchedMsg}</div>}
+                            </div>
+                          )}
                         </div>
                       )
                     })

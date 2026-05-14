@@ -2586,6 +2586,62 @@
   text-decoration: line-through;
 }
 
+/* ===== マイページ カンバンカード v2（タスク管理 3ボタン版） ===== */
+.kanban-card-home-v2 {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  text-align: left;
+  position: relative;
+}
+
+.kanban-card-home-v2:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.12);
+}
+
+.kanban-card-home-v2 .kanban-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.kanban-card-home-v2 .kanban-card-text {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--text);
+  text-align: left;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.kanban-card-home-v2.is-done {
+  opacity: 0.55;
+  background: var(--surface-2);
+}
+
+.kanban-card-home-v2.is-done .kanban-card-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.kanban-card-action-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
 /* ===== Kanban 大型ヘッダー & 大型カード（マイページの2x2） ===== */
 .kanban-col-header-lg {
   padding: 10px 8px 14px;
