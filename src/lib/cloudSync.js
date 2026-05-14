@@ -7,16 +7,16 @@
 //   client_id    : 書き込んだブラウザ識別子（自分の書き込みは無視するため）
 //   updated_at   : 最終更新時刻
 //
-// フロー：
-//   - useLocalStorage が変更されると queuePush() が呼ばれ、debounce 後に Supabase へ
-//   - Realtime で他クライアントの変更を受信 → localStorage 更新 → 'tf-cloud-sync' イベント
-//   - useLocalStorage がイベントを受け取って再描画
-//
-// オフライン対応：
-//   - オフライン時は pushKey が失敗 → _pendingFailed に積み、online イベントで再送
-//   - 起動時に pullAll() してクラウドの最新状態を取得
+// データ消失を防ぐための安全策（v2）：
+//   1. Pull 時の「スマートマージ」：オブジェクト型データは local と cloud を融合し、
+//      local-only のキー（他ユーザーのスロット等）を保護する。
+//   2. Push 時の「再読み込み」：debounce 中に他端末からの realtime で local が
+//      更新された場合に備え、push 直前に localStorage を再読し最新値を送る。
+//   3. unload 時の keepalive 送信：タブ閉じ/リロード時に未送信 push を
+//      navigator.sendBeacon 同等の keepalive fetch で送り切る。
+//   4. workspace_id の固定化：DEFAULT_WORKSPACE を常に使用、空値・不正値は無視。
 
-import { supabase } from './supabase'
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabase'
 
 const TABLE = 'taskflow_kv'
 const DEFAULT_WORKSPACE = 'kenbiya-default'
@@ -40,10 +40,30 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
 }
 
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+/**
+ * スマートマージ：local-only のキーを保護した上で cloud を反映
+ * - 両方 plain object なら：{...local, ...cloud}（cloud 優先、local-only は保持）
+ * - それ以外（array, primitive, null）：cloud をそのまま採用
+ */
+function safeMerge(localValue, cloudValue) {
+  if (!isPlainObject(localValue) || !isPlainObject(cloudValue)) return cloudValue
+  return { ...localValue, ...cloudValue }
+}
+
+// ──────────────────────────────────────────────
+// workspace_id / client_id：絶対に変わらないよう defensive に
+// ──────────────────────────────────────────────
 export function getWorkspaceId() {
   try {
     const raw = window.localStorage.getItem(WORKSPACE_KEY_LS)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
+    }
   } catch {}
   return DEFAULT_WORKSPACE
 }
@@ -56,7 +76,10 @@ export function setWorkspaceId(id) {
 export function getClientId() {
   try {
     const raw = window.localStorage.getItem(CLIENT_KEY_LS)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed === 'string' && parsed) return parsed
+    }
   } catch {}
   const id = genId() + genId()
   window.localStorage.setItem(CLIENT_KEY_LS, JSON.stringify(id))
@@ -91,14 +114,13 @@ function emitStatus() {
 }
 
 // ──────────────────────────────────────────────
-// Push（書き込み）— debounce + キュー
+// Push（書き込み）— debounce + キュー + 再読み込み
 // ──────────────────────────────────────────────
 const _pendingPushes = []
 let _flushTimer = null
 
 export function queuePush(key, value) {
   if (SYNC_EXCLUDE.has(key)) return
-  // 同じキーの古いものを置き換え
   const idx = _pendingPushes.findIndex(p => p.key === key)
   const entry = { key, value }
   if (idx >= 0) _pendingPushes[idx] = entry
@@ -109,7 +131,26 @@ export function queuePush(key, value) {
 
 function scheduleFlush() {
   if (_flushTimer) return
-  _flushTimer = setTimeout(flushPending, 200) // 200ms 即時感を保ちつつバッチ化
+  _flushTimer = setTimeout(flushPending, 200)
+}
+
+// 重要：push 直前に localStorage を再読し、debounce 中に realtime/手動で
+// 更新された値があれば、最新を送る（古い queue 値で上書きしない）
+function buildRowsFromBatch(batch, ws, myId) {
+  return batch.map(p => {
+    let latestValue = p.value
+    try {
+      const raw = window.localStorage.getItem(p.key)
+      if (raw !== null) latestValue = JSON.parse(raw)
+    } catch { /* fallback to queued value */ }
+    return {
+      workspace_id: ws,
+      key: p.key,
+      value: latestValue,
+      client_id: myId,
+      updated_at: new Date().toISOString(),
+    }
+  })
 }
 
 let _retryDelay = 1000
@@ -123,13 +164,7 @@ async function flushPending() {
   try {
     const ws = getWorkspaceId()
     const myId = getClientId()
-    const rows = batch.map(p => ({
-      workspace_id: ws,
-      key: p.key,
-      value: p.value,
-      client_id: myId,
-      updated_at: new Date().toISOString(),
-    }))
+    const rows = buildRowsFromBatch(batch, ws, myId)
     const { error } = await supabase
       .from(TABLE)
       .upsert(rows, { onConflict: 'workspace_id,key' })
@@ -141,7 +176,7 @@ async function flushPending() {
     } else {
       _lastError = null
       _lastSyncAt = Date.now()
-      _retryDelay = 1000 // 成功でリセット
+      _retryDelay = 1000
     }
   } catch (e) {
     _lastError = e.message || String(e)
@@ -153,7 +188,6 @@ async function flushPending() {
     emitStatus()
     if (_pendingPushes.length > 0) {
       if (failed) {
-        // 指数バックオフ：1s → 2s → 4s → 8s → 上限30s
         _retryDelay = Math.min(_retryDelay * 2, 30000)
         setTimeout(scheduleFlush, _retryDelay)
       } else {
@@ -164,8 +198,70 @@ async function flushPending() {
 }
 
 // ──────────────────────────────────────────────
-// Pull（読み込み）
+// unload 時の同期送信：未送信を keepalive fetch で送り切る
 // ──────────────────────────────────────────────
+function flushOnUnload() {
+  if (_pendingPushes.length === 0) return
+  const batch = _pendingPushes.splice(0)
+  const ws = getWorkspaceId()
+  const myId = getClientId()
+  const rows = buildRowsFromBatch(batch, ws, myId)
+  try {
+    // fetch + keepalive：ページ離脱後もブラウザがバックグラウンド送信
+    fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=workspace_id,key`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(rows),
+      keepalive: true,
+    })
+  } catch { /* best effort */ }
+}
+
+// ──────────────────────────────────────────────
+// Pull（読み込み）— スマートマージで local-only キーを保護
+// ──────────────────────────────────────────────
+async function applyCloudRows(rows) {
+  let updated = 0
+  const repushKeys = [] // local の方が完全だった場合は merge を cloud に戻す
+  for (const row of rows || []) {
+    if (SYNC_EXCLUDE.has(row.key)) continue
+
+    let localValue = null
+    let hasLocal = false
+    try {
+      const cur = window.localStorage.getItem(row.key)
+      if (cur !== null) {
+        localValue = JSON.parse(cur)
+        hasLocal = true
+      }
+    } catch {}
+
+    // スマートマージ：オブジェクトは local-only キーを保持
+    const merged = hasLocal ? safeMerge(localValue, row.value) : row.value
+    const mergedStr = JSON.stringify(merged)
+    const currentStr = JSON.stringify(localValue)
+
+    if (currentStr !== mergedStr) {
+      window.localStorage.setItem(row.key, mergedStr)
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
+      updated++
+    }
+
+    // local-only のキーを保持した結果、cloud と異なれば再 push（cloud を補完）
+    if (JSON.stringify(merged) !== JSON.stringify(row.value)) {
+      repushKeys.push({ key: row.key, value: merged })
+    }
+  }
+  // local-only キー保護のため再 push
+  for (const r of repushKeys) queuePush(r.key, r.value)
+  return updated
+}
+
 export async function pullAll() {
   try {
     const ws = getWorkspaceId()
@@ -179,16 +275,7 @@ export async function pullAll() {
       console.warn('[cloudSync] pull failed', error.message)
       return { ok: false, updated: 0, error: error.message }
     }
-    let updated = 0
-    for (const row of data || []) {
-      if (SYNC_EXCLUDE.has(row.key)) continue
-      const serialized = JSON.stringify(row.value)
-      const current = window.localStorage.getItem(row.key)
-      if (current === serialized) continue
-      window.localStorage.setItem(row.key, serialized)
-      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
-      updated++
-    }
+    const updated = await applyCloudRows(data)
     _lastSyncAt = Date.now()
     _lastError = null
     emitStatus()
@@ -200,10 +287,7 @@ export async function pullAll() {
   }
 }
 
-// ──────────────────────────────────────────────
-// 双方向マージ：クラウドから取得しつつ、ローカルにしか無いキーは自動アップロード
-// （初回接続や、ローカルでだけ作成された新キーの自動移行に使う）
-// ──────────────────────────────────────────────
+// 双方向マージ：クラウドから取得 + ローカルにしか無いキーを自動アップロード
 export async function pullAndMerge() {
   try {
     const ws = getWorkspaceId()
@@ -218,18 +302,9 @@ export async function pullAndMerge() {
       console.warn('[cloudSync] pullAndMerge failed', error.message)
       return { ok: false, error: error.message }
     }
-    const cloudKeys = new Set()
-    let updated = 0
-    for (const row of data || []) {
-      cloudKeys.add(row.key)
-      if (SYNC_EXCLUDE.has(row.key)) continue
-      const serialized = JSON.stringify(row.value)
-      const current = window.localStorage.getItem(row.key)
-      if (current === serialized) continue
-      window.localStorage.setItem(row.key, serialized)
-      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
-      updated++
-    }
+    const cloudKeys = new Set((data || []).map(r => r.key))
+    const updated = await applyCloudRows(data)
+
     // ローカルにしか無いキーを自動アップロード
     const toUpload = []
     for (let i = 0; i < window.localStorage.length; i++) {
@@ -248,7 +323,7 @@ export async function pullAndMerge() {
           client_id: myId,
           updated_at: new Date().toISOString(),
         })
-      } catch { /* skip */ }
+      } catch {}
     }
     let uploaded = 0
     if (toUpload.length > 0) {
@@ -278,7 +353,7 @@ export async function pullAndMerge() {
 }
 
 // ──────────────────────────────────────────────
-// 一括アップロード（手動移行用：ローカルの全キーを強制上書き）
+// 一括アップロード（手動移行用）— こちらも push 時に re-read
 // ──────────────────────────────────────────────
 export async function uploadAllLocal() {
   const ws = getWorkspaceId()
@@ -299,10 +374,9 @@ export async function uploadAllLocal() {
         client_id: myId,
         updated_at: new Date().toISOString(),
       })
-    } catch { /* skip invalid */ }
+    } catch {}
   }
   if (rows.length === 0) return { ok: true, uploaded: 0 }
-  // 大量行は分割
   const CHUNK = 50
   let uploaded = 0
   for (let i = 0; i < rows.length; i += CHUNK) {
@@ -343,17 +417,33 @@ export function subscribeRealtime() {
       payload => {
         const row = payload.new || payload.old
         if (!row || !row.key) return
-        if (row.client_id === myId) return        // 自分の書き込みは無視
+        if (row.client_id === myId) return
         if (SYNC_EXCLUDE.has(row.key)) return
         if (payload.eventType === 'DELETE') {
           window.localStorage.removeItem(row.key)
+          window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
         } else {
-          const serialized = JSON.stringify(row.value)
-          const current = window.localStorage.getItem(row.key)
-          if (current === serialized) return
-          window.localStorage.setItem(row.key, serialized)
+          // スマートマージ：local-only キーを保護した上で cloud を反映
+          let localValue = null
+          let hasLocal = false
+          try {
+            const cur = window.localStorage.getItem(row.key)
+            if (cur !== null) {
+              localValue = JSON.parse(cur)
+              hasLocal = true
+            }
+          } catch {}
+          const merged = hasLocal ? safeMerge(localValue, row.value) : row.value
+          const mergedStr = JSON.stringify(merged)
+          const currentStr = JSON.stringify(localValue)
+          if (currentStr === mergedStr) return
+          window.localStorage.setItem(row.key, mergedStr)
+          window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
+          // local-only キー保持で cloud と差がついたら補完 push
+          if (JSON.stringify(merged) !== JSON.stringify(row.value)) {
+            queuePush(row.key, merged)
+          }
         }
-        window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key } }))
         _lastSyncAt = Date.now()
         emitStatus()
       },
@@ -382,9 +472,10 @@ export async function initCloudSync() {
   if (_initialized) return
   _initialized = true
 
-  // 起動時：クラウドから取得しつつ、ローカルにしか無いキーは自動アップロード
+  // workspace_id を必ず一度書き込んで固定化（不正値・空値の混入防止）
+  setWorkspaceId(getWorkspaceId())
+
   await pullAndMerge()
-  // Realtime 購読開始
   subscribeRealtime()
 
   // ネット復帰時：再取得 + 滞留分の再送
@@ -394,6 +485,16 @@ export async function initCloudSync() {
     if (_pendingPushes.length > 0) scheduleFlush()
   })
   window.addEventListener('offline', () => emitStatus())
+
+  // タブ閉じ/リロード/モバイルバックグラウンド時に未送信を確実に flush
+  window.addEventListener('pagehide', flushOnUnload)
+  window.addEventListener('beforeunload', flushOnUnload)
+  // モバイルではタブ切替も pagehide にならない場合があるので visibilitychange でも保険
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && _pendingPushes.length > 0) {
+      flushOnUnload()
+    }
+  })
 }
 
 export async function reconnectWithNewWorkspace() {

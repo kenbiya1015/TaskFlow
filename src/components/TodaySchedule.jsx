@@ -53,6 +53,10 @@ function fmtTimeRange(ev) {
 export default function TodaySchedule({ currentUser }) {
   const [schedule, setSchedule] = useLocalStorage('tf_schedule', {})
   const [tasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
+  const [eventDone, setEventDone] = useUserScopedStorage('tf_event_done_by_user', currentUser, {})
+  const toggleDone = (id) => {
+    setEventDone({ ...(eventDone || {}), [id]: !(eventDone || {})[id] })
+  }
 
   // Google Calendar state（ユーザーごとに分離）
   const [clientIdOverride, setClientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
@@ -254,6 +258,8 @@ export default function TodaySchedule({ currentUser }) {
           userTasks={userTasks}
           onAdd={addEntry}
           onDelete={deleteEntry}
+          eventDone={eventDone || {}}
+          onToggleDone={toggleDone}
           isToday
         />
         <ScheduleSection
@@ -267,13 +273,15 @@ export default function TodaySchedule({ currentUser }) {
           userTasks={userTasks}
           onAdd={addEntry}
           onDelete={deleteEntry}
+          eventDone={eventDone || {}}
+          onToggleDone={toggleDone}
         />
       </div>
     </div>
   )
 }
 
-function ScheduleSection({ label, emoji, date, dateK, daySchedule, gcal, userTasks = [], onAdd, onDelete, isToday }) {
+function ScheduleSection({ label, emoji, date, dateK, daySchedule, gcal, userTasks = [], onAdd, onDelete, eventDone = {}, onToggleDone, isToday }) {
   const [editing, setEditing] = useState(null)
   const [editText, setEditText] = useState('')
   const [showPicker, setShowPicker] = useState(false)
@@ -373,16 +381,25 @@ function ScheduleSection({ label, emoji, date, dateK, daySchedule, gcal, userTas
 
       {allDayEvents.length > 0 && (
         <div style={{ marginBottom: 10 }}>
-          {allDayEvents.map(ev => (
-            <div
-              key={ev.id}
-              className="timeline-entry"
-              style={{ borderLeftColor: 'var(--success)', background: '#eafaf1' }}
-              title={ev.location}
-            >
-              🗓 {ev.title} <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>終日</span>
-            </div>
-          ))}
+          {allDayEvents.map(ev => {
+            const id = `gcal-${ev.id}`
+            const done = !!eventDone[id]
+            return (
+              <div
+                key={ev.id}
+                className={`timeline-entry ${done ? 'is-done' : ''}`}
+                style={{ borderLeftColor: 'var(--success)', background: done ? '#eef0f2' : '#eafaf1' }}
+                title={ev.location}
+              >
+                <button
+                  className={`schedule-done-check ${done ? 'on' : ''}`}
+                  onClick={() => onToggleDone?.(id)}
+                  title={done ? '未完了に戻す' : '完了にする'}
+                >{done ? '✓' : ''}</button>
+                🗓 {ev.title} <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>終日</span>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -399,30 +416,47 @@ function ScheduleSection({ label, emoji, date, dateK, daySchedule, gcal, userTas
                 className="timeline-content"
                 onClick={() => !isEditing && setEditing(h)}
               >
-                {evs.map(ev => (
-                  <div
-                    key={ev.id}
-                    className="timeline-entry"
-                    style={{ borderLeftColor: 'var(--success)', background: '#eafaf1' }}
-                    title={`${fmtTimeRange(ev)}${ev.location ? '\n' + ev.location : ''}`}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    🗓 <span style={{ color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>{fmtTimeRange(ev)}</span>
-                    {ev.title}
-                  </div>
-                ))}
-                {entries.map(e => (
-                  <div key={e.id} className="timeline-entry">
-                    {e.text}
-                    {e.category && (
-                      <span className="schedule-entry-tag" title={`タスク：${e.category}`}>{e.category}</span>
-                    )}
-                    <button
-                      className="timeline-entry-delete"
-                      onClick={ev => { ev.stopPropagation(); onDelete(dateK, h, e.id) }}
-                    >×</button>
-                  </div>
-                ))}
+                {evs.map(ev => {
+                  const id = `gcal-${ev.id}`
+                  const done = !!eventDone[id]
+                  return (
+                    <div
+                      key={ev.id}
+                      className={`timeline-entry ${done ? 'is-done' : ''}`}
+                      style={{ borderLeftColor: 'var(--success)', background: done ? '#eef0f2' : '#eafaf1' }}
+                      title={`${fmtTimeRange(ev)}${ev.location ? '\n' + ev.location : ''}`}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button
+                        className={`schedule-done-check ${done ? 'on' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); onToggleDone?.(id) }}
+                        title={done ? '未完了に戻す' : '完了にする'}
+                      >{done ? '✓' : ''}</button>
+                      🗓 <span style={{ color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>{fmtTimeRange(ev)}</span>
+                      {ev.title}
+                    </div>
+                  )
+                })}
+                {entries.map(e => {
+                  const done = !!eventDone[e.id]
+                  return (
+                    <div key={e.id} className={`timeline-entry ${done ? 'is-done' : ''}`}>
+                      <button
+                        className={`schedule-done-check ${done ? 'on' : ''}`}
+                        onClick={(ev) => { ev.stopPropagation(); onToggleDone?.(e.id) }}
+                        title={done ? '未完了に戻す' : '完了にする'}
+                      >{done ? '✓' : ''}</button>
+                      {e.text}
+                      {e.category && (
+                        <span className="schedule-entry-tag" title={`タスク：${e.category}`}>{e.category}</span>
+                      )}
+                      <button
+                        className="timeline-entry-delete"
+                        onClick={ev => { ev.stopPropagation(); onDelete(dateK, h, e.id) }}
+                      >×</button>
+                    </div>
+                  )
+                })}
                 {isEditing && (
                   <input
                     className="timeline-input"

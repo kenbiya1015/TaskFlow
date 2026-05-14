@@ -34,8 +34,10 @@ function dueStatus(due) {
 export default function TaskList({ currentUser }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [filter, setFilter] = useState('全て')
+  const [view, setView] = useState('list') // 'list' or 'kanban'
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
 
   const [newText, setNewText] = useState('')
   const [newCat, setNewCat] = useState('健美屋')
@@ -121,12 +123,41 @@ export default function TaskList({ currentUser }) {
     }
   }, [tasks])
 
+  // カンバン用：カテゴリフィルタを適用しつつ A/B/C/D にグループ分け（未完了のみ）
+  const tasksByPriority = useMemo(() => {
+    const groups = { A: [], B: [], C: [], D: [] }
+    tasks
+      .filter(t => !t.done)
+      .filter(t => filter === '全て' || t.category === filter)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .forEach(t => {
+        const pri = normalizePriority(t.priority)
+        groups[pri].push(t)
+      })
+    return groups
+  }, [tasks, filter])
+
+  const doneTasks = useMemo(
+    () => tasks.filter(t => t.done && (filter === '全て' || t.category === filter)),
+    [tasks, filter]
+  )
+
   return (
     <div>
       <div className="page-header">
         <div>
           <div className="page-title">タスク一覧</div>
-          <div className="page-subtitle">{currentUser} さんのタスク　·　ドラッグで並び替え</div>
+          <div className="page-subtitle">{currentUser} さんのタスク　·　ドラッグで並び替え／重要度移動</div>
+        </div>
+        <div className="view-switch">
+          <button
+            className={`view-switch-btn ${view === 'list' ? 'active' : ''}`}
+            onClick={() => setView('list')}
+          >☰ リスト</button>
+          <button
+            className={`view-switch-btn ${view === 'kanban' ? 'active' : ''}`}
+            onClick={() => setView('kanban')}
+          >🗂 カンバン</button>
         </div>
       </div>
 
@@ -171,7 +202,99 @@ export default function TaskList({ currentUser }) {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {view === 'kanban' ? (
+        <div className="kanban-board kanban-board-full">
+          {PRIORITY_OPTIONS.map(col => {
+            const items = tasksByPriority[col] || []
+            const isOver = dragOverCol === col
+            return (
+              <div
+                key={col}
+                className={`kanban-column kanban-col-${col} ${isOver ? 'is-over' : ''}`}
+                onDragOver={e => {
+                  if (!draggedId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverCol !== col) setDragOverCol(col)
+                }}
+                onDragLeave={() => {
+                  if (dragOverCol === col) setDragOverCol(null)
+                }}
+                onDrop={e => {
+                  e.preventDefault()
+                  const id = e.dataTransfer.getData('text/plain') || draggedId
+                  if (id) updatePriority(id, col)
+                  setDraggedId(null)
+                  setDragOverCol(null)
+                  setDragOverId(null)
+                }}
+              >
+                <div className="kanban-col-header">
+                  <span className={`priority-badge priority-${col}`}>{col}</span>
+                  <span className="kanban-col-label">{PRIORITY_LABELS[col]}</span>
+                  <span className="kanban-col-count">{items.length}</span>
+                </div>
+                <div className="kanban-col-body">
+                  {items.length === 0 ? (
+                    <div className="kanban-empty">ここにドロップで {col} に変更</div>
+                  ) : (
+                    items.map(t => {
+                      const ds = dueStatus(t.due)
+                      return (
+                        <div
+                          key={t.id}
+                          className="kanban-card"
+                          draggable
+                          onDragStart={e => {
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', t.id)
+                            setDraggedId(t.id)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedId(null)
+                            setDragOverCol(null)
+                          }}
+                        >
+                          <div className="kanban-card-top">
+                            <input
+                              type="checkbox"
+                              className="task-check"
+                              checked={t.done}
+                              onChange={() => toggle(t.id)}
+                            />
+                            <span className="kanban-card-text">{t.text}</span>
+                            <button className="btn-icon" onClick={() => remove(t.id)} title="削除">×</button>
+                          </div>
+                          <div className="kanban-card-meta">
+                            <span className={`tag tag-${t.category}`}>{t.category}</span>
+                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {doneTasks.length > 0 && (
+            <div className="kanban-done-strip">
+              <div className="kanban-done-title">✓ 完了済み（{doneTasks.length}）</div>
+              {doneTasks.slice(0, 12).map(t => (
+                <div key={t.id} className="kanban-done-row">
+                  <input
+                    type="checkbox"
+                    className="task-check"
+                    checked
+                    onChange={() => toggle(t.id)}
+                  />
+                  <span className="kanban-done-text">{t.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">∅</div>
           タスクがありません。新しく追加してください。

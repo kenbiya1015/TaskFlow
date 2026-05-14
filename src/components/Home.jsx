@@ -5,6 +5,16 @@ import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefau
 import { fetchEvents } from '../lib/googleCalendar'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
+const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
+const PRIORITY_OPTIONS = ['A', 'B', 'C', 'D']
+const PRIORITY_LABELS = { A: '最重要', B: '重要', C: '通常', D: '低' }
+const KANBAN_COLS = [
+  { key: 'A', label: '最重要' },
+  { key: 'B', label: '重要' },
+  { key: 'C', label: '通常' },
+  { key: 'D', label: '低' },
+]
+const LATE_NIGHT_HOUR = 22
 
 function dateKeyOf(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -44,15 +54,15 @@ function dueStatus(due) {
 
 export default function Home({ userName, onNavigate }) {
   // 個人別データ
-  const [tasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
+  const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
-  const [memos] = useUserScopedStorage('tf_mtmemos_by_user', userName, [])
   const [overall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, { strategy: '', tactics: '' })
   const [futures] = useUserScopedStorage('tf_future_by_user', userName, [])
   const [routineItems, setRoutineItems] = useUserScopedStorage('tf_routine_items_by_user', userName, DAILY_ROUTINE)
   const [roadmapItems, setRoadmapItems] = useUserScopedStorage('tf_roadmap_by_user', userName, ROADMAP)
   const [currentPhase, setCurrentPhase] = useUserScopedStorage('tf_current_phase_by_user', userName, CURRENT_PHASE_KEY)
   const [routineLog, setRoutineLog] = useUserScopedStorage('tf_daily_routine_by_user', userName, {})
+  const [eventDone, setEventDone] = useUserScopedStorage('tf_event_done_by_user', userName, {})
 
   // 共有データ
   const [schedule] = useLocalStorage('tf_schedule', {})
@@ -61,6 +71,18 @@ export default function Home({ userName, onNavigate }) {
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
 
   const member = findMember(userName)
+
+  // 22時以降は翌日表示
+  const [nowTick, setNowTick] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(new Date()), 60 * 1000)
+    return () => clearInterval(id)
+  }, [])
+  const isLateNight = nowTick.getHours() >= LATE_NIGHT_HOUR
+  const displayDate = isLateNight
+    ? new Date(nowTick.getFullYear(), nowTick.getMonth(), nowTick.getDate() + 1)
+    : new Date(nowTick.getFullYear(), nowTick.getMonth(), nowTick.getDate())
+  const displayKey = dateKeyOf(displayDate)
   const today = todayKey()
 
   const myToken = allTokens[userName] || null
@@ -109,27 +131,24 @@ export default function Home({ userName, onNavigate }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userName])
 
-  const myTasks = useMemo(
-    () => tasks
-      .filter(t => !t.done)
-      .sort((a, b) => {
-        const ao = a.order ?? Number.MAX_SAFE_INTEGER
-        const bo = b.order ?? Number.MAX_SAFE_INTEGER
-        return ao - bo
-      })
-      .slice(0, 8),
-    [tasks]
-  )
+  // タスクをA/B/C/Dにグループ分け（未完了のみ）
+  const tasksByPriority = useMemo(() => {
+    const groups = { A: [], B: [], C: [], D: [] }
+    for (const t of tasks) {
+      if (t.done) continue
+      const pri = normalizePriority(t.priority)
+      groups[pri].push(t)
+    }
+    for (const k of Object.keys(groups)) {
+      groups[k].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    }
+    return groups
+  }, [tasks])
 
-  const myDoneCount = tasks.filter(t => t.done).length
-  const myOpenCount = tasks.filter(t => !t.done).length
-  const myMemoCount = memos.length
-
-  // 今日のスケジュール（GCal + 手動入力をマージ）
-  const todayScheduleItems = useMemo(() => {
+  // 表示対象日のスケジュール（GCal + 手動入力をマージ）
+  const displayScheduleItems = useMemo(() => {
     const list = []
-    // 手動入力
-    const day = schedule[today]?.[userName] || {}
+    const day = schedule[displayKey]?.[userName] || {}
     Object.keys(day).forEach(h => {
       (day[h] || []).forEach(e => list.push({
         id: e.id,
@@ -139,8 +158,7 @@ export default function Home({ userName, onNavigate }) {
         category: e.category,
       }))
     })
-    // GCalイベント
-    const events = (myEvents[today] || []).filter(Boolean)
+    const events = (myEvents[displayKey] || []).filter(Boolean)
     events.forEach(ev => {
       let hour = 0
       if (!ev.allDay && ev.start) {
@@ -157,23 +175,23 @@ export default function Home({ userName, onNavigate }) {
       })
     })
     return list.sort((a, b) => {
-      // 終日は先頭
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return a.hour - b.hour
     })
-  }, [schedule, myEvents, today, userName])
+  }, [schedule, myEvents, displayKey, userName])
 
-  const myIdeas = useMemo(
-    () => ideas.slice(0, 5),
-    [ideas]
-  )
+  const toggleEventDone = (id) => {
+    setEventDone({ ...(eventDone || {}), [id]: !(eventDone || {})[id] })
+  }
 
-  // なりたい自分の実践（現在ユーザー）
+  const myIdeas = useMemo(() => ideas.slice(0, 5), [ideas])
+
+  // なりたい自分の実践
   const myBeing = being[userName] || { description: '', items: [] }
   const myBeingItems = (myBeing.items || []).slice(0, 8)
 
-  // 今後の取り組み（最大6件）
+  // 今後の取り組み
   const futurePlans = useMemo(() =>
     [...futures]
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -181,7 +199,7 @@ export default function Home({ userName, onNavigate }) {
     [futures]
   )
 
-  const dt = new Date()
+  const dt = displayDate
   const dateLabel = `${dt.getMonth() + 1}月${dt.getDate()}日（${WEEK_DAYS_JP[dt.getDay()]}）`
 
   const todayRoutine = routineLog[today] || {}
@@ -230,42 +248,109 @@ export default function Home({ userName, onNavigate }) {
     setRoadmapItems((roadmapItems || []).map(r => r.key === key ? { ...r, ...patch } : r))
   }
 
+  // クイックタスク追加
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [quickText, setQuickText] = useState('')
+  const [quickCat, setQuickCat] = useState('健美屋')
+  const [quickPriority, setQuickPriority] = useState('B')
+  const [quickDue, setQuickDue] = useState('')
+
+  const nextOrder = () =>
+    tasks.length === 0 ? 1 : Math.max(...tasks.map(t => t.order ?? 0)) + 1
+
+  const addQuickTask = () => {
+    if (!quickText.trim()) return
+    setTasks([
+      {
+        id: uid(),
+        text: quickText.trim(),
+        category: quickCat,
+        member: userName,
+        priority: quickPriority,
+        due: quickDue,
+        done: false,
+        createdAt: Date.now(),
+        order: nextOrder(),
+      },
+      ...tasks,
+    ])
+    setQuickText('')
+    setQuickDue('')
+    setShowQuickAdd(false)
+  }
+
+  const scheduleHeading = isLateNight ? '明日のスケジュール' : '今日のスケジュール'
+
   return (
     <div>
-      <div className="page-header">
+      {/* パーパスヒーロー */}
+      <div className="purpose-hero">
+        <div className="purpose-hero-content">
+          <div className="purpose-hero-eyebrow">★ OUR PURPOSE</div>
+          <div className="purpose-hero-title">健美屋をインフラに。</div>
+          <div className="purpose-hero-sub">Make Kenbiya the infrastructure of wellness.</div>
+          <div className="purpose-hero-meta">
+            {dateLabel}　·　{userName} さん、今日も一歩前へ。
+          </div>
+        </div>
+        <div className="purpose-hero-orbs" aria-hidden="true">
+          <span className="orb orb-1" />
+          <span className="orb orb-2" />
+          <span className="orb orb-3" />
+        </div>
+      </div>
+
+      <div className="page-header home-page-header">
         <div>
           <div className="home-greeting">{userName} さん</div>
           <div className="page-subtitle">{dateLabel}　·　MY　HOME</div>
         </div>
-        <div
-          className="member-avatar"
-          style={{
-            width: 52, height: 52, fontSize: 20, marginBottom: 0,
-            background: `linear-gradient(135deg, ${member?.color || '#0d9488'}, ${member?.color || '#0d9488'}cc)`,
-          }}
+        <button
+          className="quick-add-btn"
+          onClick={() => setShowQuickAdd(s => !s)}
+          title="タスクを追加"
         >
-          {member?.initial || userName.slice(0, 1)}
-        </div>
+          <span className="quick-add-plus">＋</span>
+          <span className="quick-add-label">タスク追加</span>
+        </button>
       </div>
 
-      <div className="stats-bar">
-        <div className="stat-tile">
-          <div className="stat-num">{myOpenCount}</div>
-          <div className="stat-label">未完了タスク</div>
+      {showQuickAdd && (
+        <div className="card quick-add-card">
+          <div className="card-title">
+            ＋ クイックタスク追加
+            <button
+              className="btn btn-small btn-secondary"
+              style={{ float: 'right' }}
+              onClick={() => setShowQuickAdd(false)}
+            >閉じる</button>
+          </div>
+          <div className="task-add-form">
+            <input
+              className="text-input"
+              placeholder="やることを入力..."
+              value={quickText}
+              onChange={e => setQuickText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addQuickTask()}
+              autoFocus
+            />
+            <select className="select" value={quickCat} onChange={e => setQuickCat(e.target.value)}>
+              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <select className="select" value={quickPriority} onChange={e => setQuickPriority(e.target.value)}>
+              {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}（{PRIORITY_LABELS[p]}）</option>)}
+            </select>
+            <input
+              type="date"
+              className="text-input"
+              value={quickDue}
+              onChange={e => setQuickDue(e.target.value)}
+              style={{ minWidth: 0 }}
+            />
+            <button className="btn" onClick={addQuickTask}>追加</button>
+          </div>
         </div>
-        <div className="stat-tile">
-          <div className="stat-num">{myDoneCount}</div>
-          <div className="stat-label">完了タスク</div>
-        </div>
-        <div className="stat-tile">
-          <div className="stat-num">{todayScheduleItems.length}</div>
-          <div className="stat-label">今日の予定</div>
-        </div>
-        <div className="stat-tile">
-          <div className="stat-num">{myMemoCount}</div>
-          <div className="stat-label">MTメモ</div>
-        </div>
-      </div>
+      )}
 
       {/* 全体の戦略・戦術 */}
       <div className="card overall-strategy-card">
@@ -293,49 +378,70 @@ export default function Home({ userName, onNavigate }) {
         </div>
       </div>
 
+      {/* タスク4軸ボード */}
+      <div className="card">
+        <div className="card-title">
+          🗂 タスク 4軸ボード（A・B・C・D）
+          <button
+            className="btn btn-small btn-secondary"
+            style={{ float: 'right' }}
+            onClick={() => onNavigate?.('tasks')}
+          >すべて見る →</button>
+        </div>
+        <div className="kanban-board kanban-board-home">
+          {KANBAN_COLS.map(col => {
+            const items = tasksByPriority[col.key] || []
+            return (
+              <div key={col.key} className={`kanban-column kanban-col-${col.key}`}>
+                <div className="kanban-col-header">
+                  <span className={`priority-badge priority-${col.key}`}>{col.key}</span>
+                  <span className="kanban-col-label">{col.label}</span>
+                  <span className="kanban-col-count">{items.length}</span>
+                </div>
+                <div className="kanban-col-body">
+                  {items.length === 0 ? (
+                    <div className="kanban-empty">なし</div>
+                  ) : (
+                    items.slice(0, 6).map(t => {
+                      const ds = dueStatus(t.due)
+                      return (
+                        <div key={t.id} className="kanban-card">
+                          <div className="kanban-card-text">{t.text}</div>
+                          <div className="kanban-card-meta">
+                            <span className={`tag tag-${t.category}`}>{t.category}</span>
+                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                  {items.length > 6 && (
+                    <div className="kanban-more">+{items.length - 6} 件</div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       <div className="home-grid">
         <div>
           <div className="card">
             <div className="card-title">
-              ✅ 自分のタスク（未完了 上位）
-              <button
-                className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
-                onClick={() => onNavigate?.('tasks')}
-              >すべて見る →</button>
-            </div>
-            {myTasks.length === 0 ? (
-              <div className="empty" style={{ padding: 20 }}>未完了のタスクはありません</div>
-            ) : (
-              <ul className="task-list home-task-list">
-                {myTasks.map(t => {
-                  const pri = normalizePriority(t.priority)
-                  const ds = dueStatus(t.due)
-                  return (
-                    <li key={t.id} className="task-item home-task-item">
-                      <div className="task-text">{t.text}</div>
-                      <span className={`tag tag-${t.category}`}>{t.category}</span>
-                      <span className={`priority-badge priority-${pri}`}>{pri}</span>
-                      {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-title">
-              📅 今日のスケジュール（Google カレンダー統合）
+              📅 {scheduleHeading}（Google カレンダー統合）
               <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
                 {tokenValid
                   ? (gcalBusy ? '同期中...' : `GCal 連携中`)
                   : 'GCal 未連携'}
+                {isLateNight && (
+                  <span className="late-night-pill" title="22時以降は翌日表示に自動切替">夜モード</span>
+                )}
               </span>
             </div>
-            {todayScheduleItems.length === 0 ? (
+            {displayScheduleItems.length === 0 ? (
               <div className="empty" style={{ padding: 20 }}>
-                本日の予定はありません
+                {isLateNight ? '明日の予定はありません' : '本日の予定はありません'}
                 {!tokenValid && (
                   <div style={{ marginTop: 8, fontSize: 12 }}>
                     <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
@@ -346,26 +452,34 @@ export default function Home({ userName, onNavigate }) {
               </div>
             ) : (
               <div className="merged-schedule">
-                {todayScheduleItems.map(e => (
-                  <div
-                    key={e.id}
-                    className={`merged-schedule-row src-${e.source}`}
-                    title={e.source === 'gcal' ? 'Google カレンダー' : '手動入力'}
-                  >
-                    <span className="merged-schedule-time">
-                      {e.source === 'gcal'
-                        ? (e.allDay ? '終日' : e.timeRange)
-                        : `${String(e.hour).padStart(2, '0')}:00`}
-                    </span>
-                    <span className="merged-schedule-text">
-                      {e.source === 'gcal' && <span className="merged-schedule-mark">🗓</span>}
-                      {e.text}
-                    </span>
-                    {e.category && (
-                      <span className={`tag tag-${e.category}`} style={{ fontSize: 10 }}>{e.category}</span>
-                    )}
-                  </div>
-                ))}
+                {displayScheduleItems.map(e => {
+                  const done = !!(eventDone || {})[e.id]
+                  return (
+                    <div
+                      key={e.id}
+                      className={`merged-schedule-row src-${e.source} ${done ? 'is-done' : ''}`}
+                      title={e.source === 'gcal' ? 'Google カレンダー' : '手動入力'}
+                    >
+                      <button
+                        className={`schedule-done-check ${done ? 'on' : ''}`}
+                        onClick={() => toggleEventDone(e.id)}
+                        title={done ? '未完了に戻す' : '完了にする'}
+                      >{done ? '✓' : ''}</button>
+                      <span className="merged-schedule-time">
+                        {e.source === 'gcal'
+                          ? (e.allDay ? '終日' : e.timeRange)
+                          : `${String(e.hour).padStart(2, '0')}:00`}
+                      </span>
+                      <span className="merged-schedule-text">
+                        {e.source === 'gcal' && <span className="merged-schedule-mark">🗓</span>}
+                        {e.text}
+                      </span>
+                      {e.category && (
+                        <span className={`tag tag-${e.category}`} style={{ fontSize: 10 }}>{e.category}</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
             <div style={{ marginTop: 10, textAlign: 'right' }}>

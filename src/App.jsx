@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { useLocalStorage, useUserScopedStorage } from './hooks/useLocalStorage'
 import { MEMBERS, findMember } from './members'
-import { runMigrations, autoBackup } from './lib/storage'
-import { initCloudSync, getSyncStatus, STATUS_EVENT } from './lib/cloudSync'
+import { runMigrations, autoBackup, listAutoBackups, restoreAutoBackup } from './lib/storage'
+import { initCloudSync, getSyncStatus, STATUS_EVENT, uploadAllLocal } from './lib/cloudSync'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -123,6 +123,7 @@ export default function App() {
           ))}
         </nav>
         <CloudSyncIndicator />
+        <QuickRestoreButton />
       </aside>
       <main className="main">{render()}</main>
     </div>
@@ -166,6 +167,67 @@ function CloudSyncIndicator() {
   return (
     <div className={`cloud-indicator ${cls}`} title={status.lastSyncAt ? `最終同期: ${new Date(status.lastSyncAt).toLocaleString('ja-JP')}` : ''}>
       {label}
+    </div>
+  )
+}
+
+function QuickRestoreButton() {
+  const [open, setOpen] = useState(false)
+  const [backups, setBackups] = useState(() => listAutoBackups())
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    if (open) setBackups(listAutoBackups())
+  }, [open])
+
+  const handleRestore = async (b) => {
+    const label = new Date(b.timestamp).toLocaleString('ja-JP')
+    if (!confirm(`${label} のバックアップに戻します。\n（既存データに上書きせず、空のキーだけ補完するマージ復元）\n続行しますか？`)) return
+    setBusy(true)
+    setMsg('')
+    try {
+      restoreAutoBackup(b.timestamp, { merge: true })
+      // 復元後の状態をクラウドへも反映（先に push してから reload）
+      try { await uploadAllLocal() } catch {}
+      setMsg('復元しました。再読み込みします...')
+      setTimeout(() => location.reload(), 600)
+    } catch (e) {
+      setMsg(`失敗: ${e.message || e}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (backups.length === 0) return null
+
+  return (
+    <div className="quick-restore">
+      <button
+        className="quick-restore-toggle"
+        onClick={() => setOpen(s => !s)}
+        title="自動バックアップから復元"
+      >
+        ↶ 復元 {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div className="quick-restore-panel">
+          <div className="quick-restore-title">直前のバックアップから復元</div>
+          {backups.slice(0, 5).map((b, i) => (
+            <button
+              key={b.timestamp}
+              className="quick-restore-item"
+              disabled={busy}
+              onClick={() => handleRestore(b)}
+            >
+              <span>{i === 0 ? '🟢 最新' : ` ${i + 1} 番目`}</span>
+              <span>{new Date(b.timestamp).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{b.keyCount}キー</span>
+            </button>
+          ))}
+          {msg && <div style={{ fontSize: 10, padding: '4px 6px' }}>{msg}</div>}
+        </div>
+      )}
     </div>
   )
 }
