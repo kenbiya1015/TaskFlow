@@ -212,10 +212,13 @@ export default function TaskList({ currentUser }) {
                   setDragOverId(null)
                 }}
               >
-                <div className="kanban-col-header kanban-col-header-lg">
-                  <span className={`priority-badge priority-${col} priority-badge-lg`}>{col}</span>
-                  <span className="kanban-col-label kanban-col-label-lg">{PRIORITY_LABELS[col]}</span>
-                  <span className="kanban-col-count">{items.length}</span>
+                <div className="kanban-col-header kanban-col-header-xl">
+                  <span className={`priority-badge priority-${col} priority-badge-xl`}>{col}</span>
+                  <div className="kanban-col-titles">
+                    <span className="kanban-col-label-xl">{PRIORITY_LABELS[col]}</span>
+                    <span className="kanban-col-sublabel">優先度 {col}</span>
+                  </div>
+                  <span className="kanban-col-count-xl">{items.length}<span className="kanban-col-count-unit">件</span></span>
                 </div>
                 <div className="kanban-col-body">
                   {items.length === 0 ? (
@@ -226,7 +229,7 @@ export default function TaskList({ currentUser }) {
                       return (
                         <div
                           key={t.id}
-                          className="kanban-card kanban-card-lg"
+                          className={`kanban-card kanban-card-v2 ${t.done ? 'is-done' : ''}`}
                           draggable
                           onDragStart={e => {
                             e.dataTransfer.effectAllowed = 'move'
@@ -238,20 +241,24 @@ export default function TaskList({ currentUser }) {
                             setDragOverCol(null)
                           }}
                         >
-                          <div className="kanban-card-top">
-                            <input
-                              type="checkbox"
-                              className="task-check"
-                              checked={t.done}
-                              onChange={() => toggle(t.id)}
-                            />
-                            <span className="kanban-card-text">{t.text}</span>
-                            <button className="btn-icon" onClick={() => remove(t.id)} title="削除">×</button>
-                          </div>
-                          <div className="kanban-card-meta">
+                          <div className="kanban-card-head">
+                            <span className={`priority-badge priority-${col}`}>{col}</span>
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
                             {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                            <div className="kanban-card-actions">
+                              <button
+                                className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
+                                onClick={() => toggle(t.id)}
+                                title={t.done ? '未完了に戻す' : '完了にする'}
+                              >{t.done ? '✓' : '○'}</button>
+                              <button
+                                className="kanban-card-btn kanban-card-del"
+                                onClick={() => remove(t.id)}
+                                title="削除"
+                              >×</button>
+                            </div>
                           </div>
+                          <div className="kanban-card-text">{t.text}</div>
                         </div>
                       )
                     })

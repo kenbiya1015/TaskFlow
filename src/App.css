@@ -1866,10 +1866,10 @@
   text-align-last: center;
 }
 
-.priority-badge.priority-A { background: #dc2626; }
-.priority-badge.priority-B { background: #ea580c; }
-.priority-badge.priority-C { background: #2563eb; }
-.priority-badge.priority-D { background: #6b7280; }
+.priority-badge.priority-A { background: #dc2626; } /* 赤 = 最優先 */
+.priority-badge.priority-B { background: #2563eb; } /* 青 = 効率化 */
+.priority-badge.priority-C { background: #059669; } /* 緑 = 将来性 */
+.priority-badge.priority-D { background: #6b7280; } /* グレー = 後回し */
 
 .priority-badge:focus {
   outline: 2px solid var(--accent);
@@ -2396,8 +2396,8 @@
 }
 
 .kanban-col-A { border-top: 4px solid #dc2626; }
-.kanban-col-B { border-top: 4px solid #ea580c; }
-.kanban-col-C { border-top: 4px solid #2563eb; }
+.kanban-col-B { border-top: 4px solid #2563eb; }
+.kanban-col-C { border-top: 4px solid #059669; }
 .kanban-col-D { border-top: 4px solid #6b7280; }
 
 .kanban-col-header {
@@ -2464,6 +2464,7 @@
   line-height: 1.4;
   color: var(--text);
   word-break: break-word;
+  text-align: left;
 }
 
 .kanban-card-meta {
@@ -2609,8 +2610,8 @@
 }
 
 .kanban-col-A .kanban-col-label-lg { color: #b91c1c; }
-.kanban-col-B .kanban-col-label-lg { color: #c2410c; }
-.kanban-col-C .kanban-col-label-lg { color: #1d4ed8; }
+.kanban-col-B .kanban-col-label-lg { color: #1d4ed8; }
+.kanban-col-C .kanban-col-label-lg { color: #047857; }
 .kanban-col-D .kanban-col-label-lg { color: #475569; }
 
 .kanban-card-lg {
@@ -2643,6 +2644,227 @@
 .kanban-board-2x2 .kanban-column {
   padding: 14px 14px 16px;
   min-height: 220px;
+}
+
+/* ===== TaskList カンバン全画面版（XLヘッダー＋色付き列） ===== */
+.kanban-board-full {
+  gap: 18px;
+}
+
+.kanban-board-full .kanban-column {
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 列ごとの上端アクセント */
+.kanban-board-full .kanban-col-A { border-top: 5px solid #dc2626; }
+.kanban-board-full .kanban-col-B { border-top: 5px solid #2563eb; }
+.kanban-board-full .kanban-col-C { border-top: 5px solid #059669; }
+.kanban-board-full .kanban-col-D { border-top: 5px solid #6b7280; }
+
+/* 列の薄い背景グラデ */
+.kanban-board-full .kanban-col-A { background: linear-gradient(180deg, #fff5f5 0%, #ffffff 24%); }
+.kanban-board-full .kanban-col-B { background: linear-gradient(180deg, #eff6ff 0%, #ffffff 24%); }
+.kanban-board-full .kanban-col-C { background: linear-gradient(180deg, #ecfdf5 0%, #ffffff 24%); }
+.kanban-board-full .kanban-col-D { background: linear-gradient(180deg, #f8fafc 0%, #ffffff 24%); }
+
+/* 大型ヘッダー */
+.kanban-col-header-xl {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 2px solid;
+}
+
+.kanban-board-full .kanban-col-A .kanban-col-header-xl { border-bottom-color: #fecaca; }
+.kanban-board-full .kanban-col-B .kanban-col-header-xl { border-bottom-color: #bfdbfe; }
+.kanban-board-full .kanban-col-C .kanban-col-header-xl { border-bottom-color: #a7f3d0; }
+.kanban-board-full .kanban-col-D .kanban-col-header-xl { border-bottom-color: #e5e7eb; }
+
+.priority-badge-xl {
+  min-width: 48px;
+  height: 44px;
+  font-size: 22px;
+  font-weight: 800;
+  padding: 0 12px;
+  border-radius: 12px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.18);
+}
+
+.kanban-col-titles {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.kanban-col-label-xl {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.kanban-col-A .kanban-col-label-xl { color: #b91c1c; }
+.kanban-col-B .kanban-col-label-xl { color: #1d4ed8; }
+.kanban-col-C .kanban-col-label-xl { color: #047857; }
+.kanban-col-D .kanban-col-label-xl { color: #475569; }
+
+.kanban-col-sublabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.16em;
+  margin-top: 4px;
+}
+
+.kanban-col-count-xl {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.kanban-col-A .kanban-col-count-xl { color: #b91c1c; }
+.kanban-col-B .kanban-col-count-xl { color: #1d4ed8; }
+.kanban-col-C .kanban-col-count-xl { color: #047857; }
+.kanban-col-D .kanban-col-count-xl { color: #475569; }
+
+.kanban-col-count-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.kanban-board-full .kanban-col-body {
+  padding: 14px 16px 16px;
+  gap: 10px;
+  flex: 1;
+}
+
+.kanban-board-full .kanban-empty {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 28px 12px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ===== カンバンカード v2（タスク一覧用・整理版） ===== */
+.kanban-card-v2 {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: grab;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  text-align: left;
+}
+
+.kanban-card-v2:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.12);
+}
+
+.kanban-card-v2:active { cursor: grabbing; }
+
+.kanban-card-v2 .kanban-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kanban-card-v2 .kanban-card-head .priority-badge {
+  min-width: 32px;
+  height: 26px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.kanban-card-v2 .kanban-card-text {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--text);
+  text-align: left;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.kanban-card-v2.is-done {
+  opacity: 0.55;
+  background: var(--surface-2);
+}
+
+.kanban-card-v2.is-done .kanban-card-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.kanban-card-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.kanban-card-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.kanban-card-btn.kanban-card-done {
+  color: var(--text-muted);
+}
+
+.kanban-card-btn.kanban-card-done:hover {
+  border-color: var(--success);
+  background: #ecfdf5;
+  color: var(--success);
+}
+
+.kanban-card-btn.kanban-card-done.on {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.kanban-card-btn.kanban-card-del:hover {
+  border-color: var(--danger);
+  background: #fee2e2;
+  color: var(--danger);
 }
 
 /* ===== マイページのスケジュール追加フォーム ===== */
