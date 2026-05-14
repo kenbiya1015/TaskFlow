@@ -104,7 +104,7 @@ export default function Members({ currentUser }) {
             <label style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>送信先：</label>
             <select className="select" value={to} onChange={e => setTo(e.target.value)}>
               {others.map(m => (
-                <option key={m.id} value={m.name}>{m.name}（{m.role}）</option>
+                <option key={m.id} value={m.name}>{m.name}</option>
               ))}
             </select>
           </div>

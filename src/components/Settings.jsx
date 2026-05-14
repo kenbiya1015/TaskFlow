@@ -221,7 +221,7 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
         </div>
         <div className="form-row">
           <select className="select" value={currentUser} onChange={e => onChangeUser(e.target.value)}>
-            {MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}（{m.role}）</option>)}
+            {MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
           </select>
           <button className="btn btn-secondary" onClick={onLogout}>ログアウト</button>
         </div>
