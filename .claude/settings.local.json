@@ -6,7 +6,8 @@
       "PowerShell(Get-Content *)",
       "PowerShell(npm run *)",
       "PowerShell(& cmd /c \"npm run build 2>&1\" | Select-Object -Last 40)",
-      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js\" run build 2>&1 | Select-Object -Last 10)"
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js\" run build 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\Program Files\\\\nodejs\\\\node_modules\\\\npm\\\\bin\\\\npm-cli.js\" run build 2>&1 | Select-Object -Last 15)"
     ]
   }
 }

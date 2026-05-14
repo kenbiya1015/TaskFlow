@@ -535,10 +535,11 @@ export default function Home({ userName, onNavigate }) {
                           <div className="kanban-card-top">
                             <span className="kanban-card-text">{t.text}</span>
                             <button
-                              className="btn-icon kanban-card-del"
+                              className="kanban-card-btn kanban-card-del"
                               onClick={() => removeTask(t.id)}
                               title="削除"
-                            >×</button>
+                              aria-label="タスクを削除"
+                            >🗑</button>
                           </div>
                           <div className="kanban-card-meta">
                             <span className={`tag tag-${t.category}`}>{t.category}</span>

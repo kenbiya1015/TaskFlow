@@ -1,5 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+
+const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6) // 6..24
+
+function dateKeyOf(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const CATEGORIES = ['全て', '健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
 const PRIORITY_OPTIONS = ['A', 'B', 'C', 'D']
@@ -33,11 +39,52 @@ function dueStatus(due) {
 
 export default function TaskList({ currentUser }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
+  const [, setSchedule] = useLocalStorage('tf_schedule', {})
   const [filter, setFilter] = useState('全て')
   const [view, setView] = useState('kanban') // 'list' or 'kanban'
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
+
+  // スケジュール追加ポップオーバー（タスクID別に開閉）
+  const [schedMenuFor, setSchedMenuFor] = useState(null)
+  const [schedDay, setSchedDay] = useState('today') // today | tomorrow
+  const [schedHour, setSchedHour] = useState(9)
+  const [schedMsg, setSchedMsg] = useState('')
+
+  const openSchedMenu = (taskId) => {
+    setSchedMenuFor(taskId)
+    setSchedDay('today')
+    setSchedHour(9)
+    setSchedMsg('')
+  }
+  const closeSchedMenu = () => {
+    setSchedMenuFor(null)
+    setSchedMsg('')
+  }
+
+  const submitScheduleAdd = (task) => {
+    const base = new Date()
+    base.setHours(0, 0, 0, 0)
+    if (schedDay === 'tomorrow') base.setDate(base.getDate() + 1)
+    const dateK = dateKeyOf(base)
+    setSchedule(prev => {
+      const next = { ...prev }
+      next[dateK] = { ...(next[dateK] || {}) }
+      next[dateK][currentUser] = { ...(next[dateK][currentUser] || {}) }
+      const list = next[dateK][currentUser][schedHour] || []
+      next[dateK][currentUser][schedHour] = [...list, {
+        id: uid(),
+        text: task.text,
+        taskId: task.id,
+        category: task.category,
+        priority: task.priority,
+      }]
+      return next
+    })
+    setSchedMsg(`${schedDay === 'today' ? '今日' : '明日'} ${String(schedHour).padStart(2, '0')}:00 に追加しました`)
+    setTimeout(() => closeSchedMenu(), 900)
+  }
 
   const [newText, setNewText] = useState('')
   const [newCat, setNewCat] = useState('健美屋')
@@ -252,13 +299,50 @@ export default function TaskList({ currentUser }) {
                                 title={t.done ? '未完了に戻す' : '完了にする'}
                               >{t.done ? '✓' : '○'}</button>
                               <button
+                                className={`kanban-card-btn kanban-card-sched ${schedMenuFor === t.id ? 'on' : ''}`}
+                                onClick={() => schedMenuFor === t.id ? closeSchedMenu() : openSchedMenu(t.id)}
+                                title="スケジュールに追加"
+                              >📅</button>
+                              <button
                                 className="kanban-card-btn kanban-card-del"
                                 onClick={() => remove(t.id)}
                                 title="削除"
-                              >×</button>
+                              >🗑</button>
                             </div>
                           </div>
                           <div className="kanban-card-text">{t.text}</div>
+                          {schedMenuFor === t.id && (
+                            <div className="kanban-sched-pop" onClick={e => e.stopPropagation()}>
+                              <div className="kanban-sched-title">📅 スケジュールに追加</div>
+                              <div className="kanban-sched-day-row">
+                                <button
+                                  className={`kanban-sched-day ${schedDay === 'today' ? 'on' : ''}`}
+                                  onClick={() => setSchedDay('today')}
+                                >今日</button>
+                                <button
+                                  className={`kanban-sched-day ${schedDay === 'tomorrow' ? 'on' : ''}`}
+                                  onClick={() => setSchedDay('tomorrow')}
+                                >明日</button>
+                              </div>
+                              <div className="kanban-sched-hour-row">
+                                <label className="kanban-sched-label">時刻</label>
+                                <select
+                                  className="select"
+                                  value={schedHour}
+                                  onChange={e => setSchedHour(Number(e.target.value))}
+                                >
+                                  {PICK_HOURS.map(h => (
+                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="kanban-sched-actions">
+                                <button className="btn btn-small btn-secondary" onClick={closeSchedMenu}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => submitScheduleAdd(t)}>＋ 追加</button>
+                              </div>
+                              {schedMsg && <div className="kanban-sched-msg">{schedMsg}</div>}
+                            </div>
+                          )}
                         </div>
                       )
                     })
@@ -344,7 +428,7 @@ export default function TaskList({ currentUser }) {
                 ) : (
                   <span className="task-meta">期日なし</span>
                 )}
-                <button className="btn-icon" onClick={() => remove(t.id)} title="削除">×</button>
+                <button className="task-delete-btn" onClick={() => remove(t.id)} title="削除" aria-label="タスクを削除">🗑</button>
               </li>
             )
           })}

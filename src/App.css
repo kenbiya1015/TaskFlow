@@ -2828,13 +2828,13 @@
 }
 
 .kanban-card-btn {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
@@ -2843,6 +2843,7 @@
   cursor: pointer;
   transition: all 0.15s ease;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .kanban-card-btn.kanban-card-done {
@@ -2865,6 +2866,129 @@
   border-color: var(--danger);
   background: #fee2e2;
   color: var(--danger);
+}
+
+.kanban-card-btn.kanban-card-sched:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.kanban-card-btn.kanban-card-sched.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ===== カンバンカード内 スケジュール追加ポップオーバー ===== */
+.kanban-sched-pop {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 4px;
+  box-shadow: 0 8px 22px -6px rgba(13, 148, 136, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kanban-sched-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-deep);
+  letter-spacing: 0.04em;
+}
+
+.kanban-sched-day-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.kanban-sched-day {
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  transition: all 0.15s;
+}
+
+.kanban-sched-day:hover {
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+
+.kanban-sched-day.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.kanban-sched-hour-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kanban-sched-label {
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 600;
+  min-width: 32px;
+}
+
+.kanban-sched-hour-row .select {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.kanban-sched-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.kanban-sched-msg {
+  font-size: 11px;
+  color: var(--success);
+  font-weight: 600;
+  padding: 4px 6px;
+  background: #ecfdf5;
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* ===== リストビュー削除ボタン（押しやすい大型） ===== */
+.task-delete-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.task-delete-btn:hover {
+  border-color: var(--danger);
+  background: #fee2e2;
+  color: var(--danger);
+}
+
+.task-delete-btn:active {
+  transform: scale(0.96);
 }
 
 /* ===== マイページのスケジュール追加フォーム ===== */
@@ -3033,4 +3157,10 @@
 
   /* カンバン：1カラム */
   .kanban-board { grid-template-columns: 1fr; }
+
+  /* タッチで押しやすい削除・アクションボタン */
+  .kanban-card-btn { width: 42px; height: 42px; font-size: 18px; }
+  .task-delete-btn { width: 42px; height: 42px; font-size: 18px; }
+  .kanban-card-actions { gap: 6px; }
+  .kanban-sched-day { padding: 12px 10px; font-size: 14px; }
 }
