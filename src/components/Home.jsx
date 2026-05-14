@@ -79,6 +79,24 @@ export default function Home({ userName, onNavigate }) {
     const id = setInterval(() => setNowTick(new Date()), 60 * 1000)
     return () => clearInterval(id)
   }, [])
+
+  // 毎日0時に再レンダリングして「今日やること」のチェックを自動リセット
+  // （routineLog[today] は日付キー単位なので、today が新しい日になれば空に戻る）
+  useEffect(() => {
+    let timer
+    const scheduleMidnight = () => {
+      const now = new Date()
+      const nextMidnight = new Date(
+        now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 50
+      )
+      timer = setTimeout(() => {
+        setNowTick(new Date())
+        scheduleMidnight()
+      }, nextMidnight - now)
+    }
+    scheduleMidnight()
+    return () => clearTimeout(timer)
+  }, [])
   const isLateNight = nowTick.getHours() >= LATE_NIGHT_HOUR
   const displayDate = isLateNight
     ? new Date(nowTick.getFullYear(), nowTick.getMonth(), nowTick.getDate() + 1)
@@ -206,6 +224,26 @@ export default function Home({ userName, onNavigate }) {
 
   const toggleTaskDone = (id) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  }
+
+  // タスクテキストの編集
+  const [editingTaskId, setEditingTaskId] = useState(null)
+  const [editingTaskText, setEditingTaskText] = useState('')
+  const startEditTask = (t) => {
+    setEditingTaskId(t.id)
+    setEditingTaskText(t.text)
+    setTaskSchedMenuFor(null)
+  }
+  const cancelEditTask = () => {
+    setEditingTaskId(null)
+    setEditingTaskText('')
+  }
+  const saveEditTask = (id) => {
+    const txt = editingTaskText.trim()
+    if (!txt) { cancelEditTask(); return }
+    setTasks(tasks.map(t => t.id === id ? { ...t, text: txt } : t))
+    setEditingTaskId(null)
+    setEditingTaskText('')
   }
 
   // タスクカードからスケジュールへ追加（タスクID別にポップオーバー開閉）
@@ -573,13 +611,33 @@ export default function Home({ userName, onNavigate }) {
                   ) : (
                     items.slice(0, 6).map(t => {
                       const ds = dueStatus(t.due)
+                      const isEditing = editingTaskId === t.id
                       return (
                         <div key={t.id} className={`kanban-card kanban-card-home-v2 ${t.done ? 'is-done' : ''}`}>
                           <div className="kanban-card-meta">
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
                             {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
                           </div>
-                          <div className="kanban-card-text">{t.text}</div>
+                          {isEditing ? (
+                            <div className="kanban-card-edit-wrap">
+                              <textarea
+                                className="textarea kanban-card-edit-input"
+                                value={editingTaskText}
+                                onChange={e => setEditingTaskText(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelEditTask() }
+                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEditTask(t.id) }
+                                }}
+                                autoFocus
+                              />
+                              <div className="kanban-card-edit-actions">
+                                <button className="btn btn-small btn-secondary" onClick={cancelEditTask}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => saveEditTask(t.id)}>保存</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="kanban-card-text">{t.text}</div>
+                          )}
                           <div className="kanban-card-action-row">
                             <button
                               className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
@@ -587,6 +645,12 @@ export default function Home({ userName, onNavigate }) {
                               title={t.done ? '未完了に戻す' : '完了にする'}
                               aria-label="完了の切り替え"
                             >✓</button>
+                            <button
+                              className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
+                              onClick={() => isEditing ? cancelEditTask() : startEditTask(t)}
+                              title={isEditing ? '編集をキャンセル' : '編集'}
+                              aria-label="タスクを編集"
+                            >✏️</button>
                             <button
                               className={`kanban-card-btn kanban-card-sched ${taskSchedMenuFor === t.id ? 'on' : ''}`}
                               onClick={() => taskSchedMenuFor === t.id ? closeTaskSchedMenu() : openTaskSchedMenu(t.id)}

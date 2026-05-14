@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6) // 6..24
@@ -45,6 +45,13 @@ export default function TaskList({ currentUser }) {
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
+
+  // 編集モード（カンバン／リスト共通）
+  const [editingId, setEditingId] = useState(null)
+  const [editText, setEditText] = useState('')
+
+  // タッチ用ロングプレスD&D
+  const touchDragRef = useRef({})
 
   // スケジュール追加ポップオーバー（タスクID別に開閉）
   const [schedMenuFor, setSchedMenuFor] = useState(null)
@@ -149,6 +156,122 @@ export default function TaskList({ currentUser }) {
     setTasks(reordered)
   }
 
+  // カード→カードのドロップ：並び替え＋必要なら列(優先度)も変更
+  const dropOnCard = (fromId, toId) => {
+    if (!fromId || fromId === toId) return
+    setTasks(prev => {
+      const target = prev.find(t => t.id === toId)
+      if (!target) return prev
+      const list = [...prev].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      const fromIdx = list.findIndex(t => t.id === fromId)
+      if (fromIdx < 0) return prev
+      const moved = { ...list[fromIdx], priority: normalizePriority(target.priority) }
+      list.splice(fromIdx, 1)
+      const newToIdx = list.findIndex(t => t.id === toId)
+      list.splice(newToIdx, 0, moved)
+      return list.map((t, i) => ({ ...t, order: i + 1 }))
+    })
+  }
+
+  // 編集
+  const startEdit = (t) => {
+    setEditingId(t.id)
+    setEditText(t.text)
+    setSchedMenuFor(null)
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditText('')
+  }
+  const saveEdit = (id) => {
+    const txt = editText.trim()
+    if (!txt) { cancelEdit(); return }
+    setTasks(tasks.map(t => t.id === id ? { ...t, text: txt } : t))
+    setEditingId(null)
+    setEditText('')
+  }
+
+  // タッチでの長押しD&D（モバイル）
+  const handleCardPointerDown = (task, e) => {
+    if (e.pointerType !== 'touch') return
+    if (editingId === task.id) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const ref = touchDragRef.current
+    ref.active = false
+    ref.taskId = task.id
+
+    const cleanup = () => {
+      clearTimeout(ref.longPressTimer)
+      ref.longPressTimer = null
+      ref.active = false
+      document.body.classList.remove('kanban-touch-dragging-active')
+      setDraggedId(null)
+      setDragOverId(null)
+      setDragOverCol(null)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onCancel)
+    }
+
+    const onMove = (ev) => {
+      if (!ref.active) {
+        const dx = Math.abs(ev.clientX - startX)
+        const dy = Math.abs(ev.clientY - startY)
+        if (dx > 8 || dy > 8) cleanup()
+        return
+      }
+      ev.preventDefault()
+      const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+      const cardEl = tgt && tgt.closest ? tgt.closest('[data-kb-card-id]') : null
+      const colEl = tgt && tgt.closest ? tgt.closest('[data-kb-col]') : null
+      if (cardEl) {
+        const tid = cardEl.getAttribute('data-kb-card-id')
+        if (tid && tid !== task.id) {
+          setDragOverId(tid)
+          setDragOverCol(null)
+          return
+        }
+      }
+      if (colEl) {
+        const col = colEl.getAttribute('data-kb-col')
+        setDragOverCol(col)
+        setDragOverId(null)
+      } else {
+        setDragOverId(null)
+        setDragOverCol(null)
+      }
+    }
+
+    const onUp = (ev) => {
+      if (ref.active) {
+        const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+        const cardEl = tgt && tgt.closest ? tgt.closest('[data-kb-card-id]') : null
+        const colEl = tgt && tgt.closest ? tgt.closest('[data-kb-col]') : null
+        if (cardEl) {
+          const tid = cardEl.getAttribute('data-kb-card-id')
+          if (tid && tid !== task.id) dropOnCard(task.id, tid)
+        } else if (colEl) {
+          const col = colEl.getAttribute('data-kb-col')
+          if (col) updatePriority(task.id, col)
+        }
+      }
+      cleanup()
+    }
+    const onCancel = () => cleanup()
+
+    ref.longPressTimer = setTimeout(() => {
+      ref.active = true
+      setDraggedId(task.id)
+      document.body.classList.add('kanban-touch-dragging-active')
+      if (navigator.vibrate) { try { navigator.vibrate(10) } catch { /* ignore */ } }
+    }, 350)
+
+    document.addEventListener('pointermove', onMove, { passive: false })
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onCancel)
+  }
+
   const filtered = useMemo(() => {
     return tasks
       .filter(t => filter === '全て' || t.category === filter)
@@ -240,6 +363,7 @@ export default function TaskList({ currentUser }) {
             return (
               <div
                 key={col}
+                data-kb-col={col}
                 className={`kanban-column kanban-col-${col} ${isOver ? 'is-over' : ''}`}
                 onDragOver={e => {
                   if (!draggedId) return
@@ -273,20 +397,46 @@ export default function TaskList({ currentUser }) {
                   ) : (
                     items.map(t => {
                       const ds = dueStatus(t.due)
+                      const isEditing = editingId === t.id
+                      const isDragOver = dragOverId === t.id
                       return (
                         <div
                           key={t.id}
-                          className={`kanban-card kanban-card-v2 ${t.done ? 'is-done' : ''}`}
-                          draggable
+                          data-kb-card-id={t.id}
+                          className={`kanban-card kanban-card-v2 ${t.done ? 'is-done' : ''} ${isDragOver ? 'drag-over' : ''} ${draggedId === t.id ? 'is-dragging' : ''}`}
+                          draggable={!isEditing}
                           onDragStart={e => {
+                            if (isEditing) { e.preventDefault(); return }
                             e.dataTransfer.effectAllowed = 'move'
                             e.dataTransfer.setData('text/plain', t.id)
                             setDraggedId(t.id)
                           }}
-                          onDragEnd={() => {
+                          onDragOver={e => {
+                            if (!draggedId || draggedId === t.id) return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            e.dataTransfer.dropEffect = 'move'
+                            if (dragOverId !== t.id) setDragOverId(t.id)
+                            if (dragOverCol !== col) setDragOverCol(col)
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverId === t.id) setDragOverId(null)
+                          }}
+                          onDrop={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            const fromId = e.dataTransfer.getData('text/plain') || draggedId
+                            if (fromId && fromId !== t.id) dropOnCard(fromId, t.id)
                             setDraggedId(null)
+                            setDragOverId(null)
                             setDragOverCol(null)
                           }}
+                          onDragEnd={() => {
+                            setDraggedId(null)
+                            setDragOverId(null)
+                            setDragOverCol(null)
+                          }}
+                          onPointerDown={e => handleCardPointerDown(t, e)}
                         >
                           <div className="kanban-card-head">
                             <span className={`priority-badge priority-${col}`}>{col}</span>
@@ -299,6 +449,11 @@ export default function TaskList({ currentUser }) {
                                 title={t.done ? '未完了に戻す' : '完了にする'}
                               >{t.done ? '✓' : '○'}</button>
                               <button
+                                className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
+                                onClick={() => isEditing ? cancelEdit() : startEdit(t)}
+                                title={isEditing ? '編集をキャンセル' : '編集'}
+                              >✏️</button>
+                              <button
                                 className={`kanban-card-btn kanban-card-sched ${schedMenuFor === t.id ? 'on' : ''}`}
                                 onClick={() => schedMenuFor === t.id ? closeSchedMenu() : openSchedMenu(t.id)}
                                 title="スケジュールに追加"
@@ -310,7 +465,26 @@ export default function TaskList({ currentUser }) {
                               >🗑</button>
                             </div>
                           </div>
-                          <div className="kanban-card-text">{t.text}</div>
+                          {isEditing ? (
+                            <div className="kanban-card-edit-wrap">
+                              <textarea
+                                className="textarea kanban-card-edit-input"
+                                value={editText}
+                                onChange={e => setEditText(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEdit(t.id) }
+                                }}
+                                autoFocus
+                              />
+                              <div className="kanban-card-edit-actions">
+                                <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => saveEdit(t.id)}>保存</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="kanban-card-text">{t.text}</div>
+                          )}
                           {schedMenuFor === t.id && (
                             <div className="kanban-sched-pop" onClick={e => e.stopPropagation()}>
                               <div className="kanban-sched-title">📅 スケジュールに追加</div>
