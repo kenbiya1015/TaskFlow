@@ -32,9 +32,30 @@ const NAV = [
   { id: 'settings', icon: '⚙️', label: '設定' },
 ]
 
+// スマホ下部タブに常時表示するページ（短いラベルで表示）
+const PRIMARY_TABS = [
+  { id: 'home',     icon: '🏠', label: 'マイページ' },
+  { id: 'schedule', icon: '📅', label: 'スケジュール' },
+  { id: 'tasks',    icon: '✅', label: 'タスク' },
+  { id: 'ideas',    icon: '💡', label: 'アイデア' },
+]
+const PRIMARY_TAB_IDS = PRIMARY_TABS.map(t => t.id)
+
 export default function App() {
   const [currentUser, setCurrentUser] = useLocalStorage('tf_currentUser', '')
   const [page, setPage] = useState('home')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // ページ遷移時にドロワーを自動で閉じる
+  useEffect(() => { setDrawerOpen(false) }, [page])
+
+  // Escキーでドロワーを閉じる
+  useEffect(() => {
+    if (!drawerOpen) return
+    const handler = (e) => { if (e.key === 'Escape') setDrawerOpen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [drawerOpen])
 
   useEffect(() => {
     // 1. 起動時にスキーマ移行を実行（古いキー名・形式があれば自動で新形式へ）
@@ -124,6 +145,83 @@ export default function App() {
         </nav>
       </aside>
       <main className="main">{render()}</main>
+
+      {/* スマホ下部タブバー（CSSで <=768px のみ表示） */}
+      <nav className="mobile-tabbar" aria-label="モバイルタブ">
+        {PRIMARY_TABS.map(t => (
+          <button
+            key={t.id}
+            className={`mobile-tab ${page === t.id ? 'active' : ''}`}
+            onClick={() => setPage(t.id)}
+            aria-label={t.label}
+            aria-current={page === t.id ? 'page' : undefined}
+          >
+            <span className="mobile-tab-icon">{t.icon}</span>
+            <span className="mobile-tab-label">{t.label}</span>
+          </button>
+        ))}
+        <button
+          className={`mobile-tab mobile-tab-menu ${drawerOpen || !PRIMARY_TAB_IDS.includes(page) ? 'active' : ''}`}
+          onClick={() => setDrawerOpen(o => !o)}
+          aria-label="メニューを開く"
+          aria-expanded={drawerOpen}
+        >
+          <span className="mobile-tab-icon">≡</span>
+          <span className="mobile-tab-label">メニュー</span>
+        </button>
+      </nav>
+
+      {/* スマホ用 全メニュードロワー */}
+      <div
+        className={`mobile-menu-overlay ${drawerOpen ? 'open' : ''}`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden={!drawerOpen}
+      />
+      <div
+        className={`mobile-menu-drawer ${drawerOpen ? 'open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!drawerOpen}
+        aria-label="全メニュー"
+      >
+        <div className="mobile-menu-handle" />
+        <div className="mobile-menu-header">
+          <div
+            className="login-avatar"
+            style={{
+              width: 44, height: 44, fontSize: 17,
+              background: `linear-gradient(135deg, ${member?.color || '#0d9488'}, ${member?.color || '#0d9488'}cc)`,
+            }}
+          >
+            {member?.initial || currentUser.slice(0, 1)}
+          </div>
+          <div className="mobile-menu-user-info">
+            <div className="mobile-menu-user-name">{currentUser}</div>
+            <div className="mobile-menu-user-role">{member?.role || ''}</div>
+          </div>
+          <button
+            className="mobile-menu-close"
+            onClick={() => setDrawerOpen(false)}
+            aria-label="閉じる"
+          >×</button>
+        </div>
+        <div className="mobile-menu-list">
+          {NAV.map(n => (
+            <button
+              key={n.id}
+              className={`mobile-menu-item ${page === n.id ? 'active' : ''}`}
+              onClick={() => setPage(n.id)}
+            >
+              <span className="mobile-menu-item-icon">{n.icon}</span>
+              <span className="mobile-menu-item-label">{n.label}</span>
+              {page === n.id && <span className="mobile-menu-item-mark" aria-hidden>●</span>}
+            </button>
+          ))}
+        </div>
+        <div className="mobile-menu-footer">
+          <button className="btn btn-secondary" onClick={() => setCurrentUser('')}>ログアウト</button>
+        </div>
+      </div>
     </div>
   )
 }

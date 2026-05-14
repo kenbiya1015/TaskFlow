@@ -3033,6 +3033,11 @@
   border: 1px solid #334155;
 }
 
+/* ===== モバイル下部タブバー & 全メニュードロワー ===== */
+.mobile-tabbar { display: none; }
+.mobile-menu-overlay,
+.mobile-menu-drawer { display: none; }
+
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .schedule-container { grid-template-columns: 1fr; }
@@ -3047,72 +3052,251 @@
 }
 
 @media (max-width: 768px) {
-  /* スマホ：サイドバーを上部固定のタブバー化 */
+  /* スマホ：上部サイドバーは廃止、下部タブバーへ */
   .app {
     flex-direction: column;
   }
   .sidebar {
-    width: 100%;
-    height: auto;
-    min-height: 0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 6px 8px;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0;
-    overflow: hidden;
-    background: var(--surface);
-    backdrop-filter: saturate(160%) blur(8px);
-    -webkit-backdrop-filter: saturate(160%) blur(8px);
-    box-shadow: 0 4px 12px -8px rgba(0, 0, 0, 0.18);
-  }
-  /* スマホでは heartrust ロゴ・志アバターを非表示 */
-  .sidebar-header,
-  .sidebar-user {
     display: none !important;
   }
-  .sidebar nav {
-    flex: 1;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0;
-    gap: 4px;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
-  }
-  .sidebar nav::-webkit-scrollbar { height: 4px; }
-  .nav-item {
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-width: 70px;
-    padding: 8px 10px;
-    font-size: 11px;
-    font-weight: 600;
-    gap: 4px;
-    flex-shrink: 0;
-    box-shadow: none !important;
-    text-align: center;
-    line-height: 1.2;
-    border-radius: 10px;
-  }
-  .nav-item.active {
-    box-shadow: inset 0 -3px 0 var(--accent) !important;
-    background: var(--accent-soft);
-  }
-  .nav-icon { font-size: 20px; width: auto; }
-
   .cloud-indicator {
     display: none;
   }
 
-  /* メイン領域 */
-  .main { padding: 16px; }
+  /* 下部タブバー本体 */
+  .mobile-tabbar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 200;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    box-shadow: 0 -6px 18px -6px rgba(0, 0, 0, 0.14);
+  }
+
+  .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 56px;
+    padding: 6px 4px 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .mobile-tab:active { background: var(--surface-2); }
+
+  .mobile-tab-icon {
+    font-size: 22px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+
+  .mobile-tab-label {
+    white-space: nowrap;
+    line-height: 1.1;
+  }
+
+  .mobile-tab.active {
+    color: var(--accent-deep);
+  }
+
+  .mobile-tab.active .mobile-tab-icon {
+    transform: scale(1.08);
+  }
+
+  .mobile-tab.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 22%; right: 22%;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 0 0 4px 4px;
+  }
+
+  .mobile-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.18;
+    z-index: -1;
+  }
+
+  /* メニューボタン側はアイコンを記号に */
+  .mobile-tab-menu .mobile-tab-icon {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  /* ドロワー：背景オーバーレイ */
+  .mobile-menu-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 300;
+  }
+  .mobile-menu-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ドロワー本体（画面下から縦に展開） */
+  .mobile-menu-drawer {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 86vh;
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 6px 16px calc(20px + env(safe-area-inset-bottom, 0));
+    z-index: 320;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(.2, .8, .3, 1);
+    box-shadow: 0 -16px 40px -12px rgba(0, 0, 0, 0.32);
+    overflow-y: auto;
+  }
+  .mobile-menu-drawer.open {
+    transform: translateY(0);
+  }
+
+  .mobile-menu-handle {
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border-strong);
+    margin: 6px auto 14px;
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-user-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-menu-user-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-menu-user-role {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .mobile-menu-close {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .mobile-menu-close:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: #fee2e2;
+  }
+
+  .mobile-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .mobile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-height: 52px;
+  }
+  .mobile-menu-item:hover {
+    background: var(--surface-2);
+  }
+  .mobile-menu-item.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-deep);
+    font-weight: 700;
+  }
+  .mobile-menu-item-icon {
+    font-size: 22px;
+    width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .mobile-menu-item-label {
+    flex: 1;
+  }
+  .mobile-menu-item-mark {
+    color: var(--accent);
+    font-size: 9px;
+  }
+
+  .mobile-menu-footer {
+    padding-top: 6px;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* メイン領域：下部タブバーぶんの余白 */
+  .main {
+    padding: 16px 16px calc(80px + env(safe-area-inset-bottom, 0));
+  }
 
   /* グリッドはモバイルで1カラム化（既に他の @media にあるけど念のため） */
   .home-grid { grid-template-columns: 1fr; }
