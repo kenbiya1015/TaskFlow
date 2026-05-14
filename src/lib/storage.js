@@ -43,6 +43,7 @@ export const DATA_KEYS = [
   'tf_current_phase_by_user',
   'tf_daily_routine_by_user',
   'tf_default_page_by_user',
+  'tf_event_done_by_user',
   // ▼ 旧キー（互換のため残す。マイグレーション後は読み込まれない）
   'tf_tasks',
   'tf_ideas',
@@ -62,7 +63,7 @@ export const DATA_KEYS = [
   // 認証トークン（tf_gcal_user_tokens）はエクスポート対象外（セキュリティ）
 ]
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 const VERSION_KEY = 'tf_schemaVersion'
 
 // 自動バックアップ関連
@@ -152,7 +153,143 @@ export function runMigrations() {
   if (current < 2) migrateV1toV2()
   if (current < 3) migrateV2toV3()
   if (current < 4) migrateV3toV4()
+  if (current < 5) migrateV4toV5()
   window.localStorage.setItem(VERSION_KEY, String(SCHEMA_VERSION))
+}
+
+/**
+ * V4 → V5: ユーザー名の改名
+ *   古澤 → 古澤照彦 ／ 有野 → 有野圭介
+ *
+ * 以下を一括で書き換える：
+ *   1. _by_user 形式キー全部の中で { 旧名: ... } を { 新名: ... } へ
+ *   2. tf_schedule（{date: {user: {...}}}）の入れ子ユーザー名
+ *   3. tf_currentUser の値そのもの
+ *   4. tasks の `member` フィールド / ideas の `author` フィールド
+ *   5. tf_members の name フィールド（id で同定）
+ */
+function migrateV4toV5() {
+  const USER_RENAMES = [
+    ['古澤', '古澤照彦'],
+    ['有野', '有野圭介'],
+  ]
+
+  // 1. _by_user / _user_* 形式の上位キー（{ user: data }）
+  const USER_KEYED = [
+    'tf_tasks_by_user', 'tf_ideas_by_user', 'tf_sns_by_user',
+    'tf_mtmemos_by_user', 'tf_partners_by_user', 'tf_future_by_user',
+    'tf_strategies_by_user', 'tf_strategy_overall_by_user',
+    'tf_yearGoals_by_user', 'tf_goalYears_by_user', 'tf_vision_by_user',
+    'tf_being', 'tf_routine_items_by_user', 'tf_roadmap_by_user',
+    'tf_current_phase_by_user', 'tf_daily_routine_by_user',
+    'tf_default_page_by_user', 'tf_event_done_by_user',
+    'tf_gcal_user_events', 'tf_gcal_user_tokens',
+  ]
+  for (const key of USER_KEYED) {
+    try {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) continue
+      const obj = JSON.parse(raw)
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue
+      let changed = false
+      for (const [oldName, newName] of USER_RENAMES) {
+        if (obj[oldName] !== undefined && obj[newName] === undefined) {
+          obj[newName] = obj[oldName]
+          delete obj[oldName]
+          changed = true
+        }
+      }
+      if (changed) window.localStorage.setItem(key, JSON.stringify(obj))
+    } catch {}
+  }
+
+  // 2. tf_schedule = { dateKey: { userName: { hour: [...] } } }
+  try {
+    const raw = window.localStorage.getItem('tf_schedule')
+    if (raw) {
+      const sched = JSON.parse(raw)
+      let changed = false
+      if (sched && typeof sched === 'object') {
+        for (const dateK of Object.keys(sched)) {
+          const day = sched[dateK]
+          if (!day || typeof day !== 'object') continue
+          for (const [oldName, newName] of USER_RENAMES) {
+            if (day[oldName] !== undefined && day[newName] === undefined) {
+              day[newName] = day[oldName]
+              delete day[oldName]
+              changed = true
+            }
+          }
+        }
+      }
+      if (changed) window.localStorage.setItem('tf_schedule', JSON.stringify(sched))
+    }
+  } catch {}
+
+  // 3. tf_currentUser
+  try {
+    const raw = window.localStorage.getItem('tf_currentUser')
+    if (raw) {
+      const cu = JSON.parse(raw)
+      for (const [oldName, newName] of USER_RENAMES) {
+        if (cu === oldName) {
+          window.localStorage.setItem('tf_currentUser', JSON.stringify(newName))
+          break
+        }
+      }
+    }
+  } catch {}
+
+  // 4. tasks の member / ideas の author
+  const updateFieldInUserMap = (storageKey, field) => {
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (!raw) return
+      const map = JSON.parse(raw)
+      if (!map || typeof map !== 'object') return
+      let changed = false
+      for (const user of Object.keys(map)) {
+        const list = map[user]
+        if (!Array.isArray(list)) continue
+        for (const item of list) {
+          if (!item || typeof item !== 'object') continue
+          for (const [oldName, newName] of USER_RENAMES) {
+            if (item[field] === oldName) {
+              item[field] = newName
+              changed = true
+            }
+          }
+        }
+      }
+      if (changed) window.localStorage.setItem(storageKey, JSON.stringify(map))
+    } catch {}
+  }
+  updateFieldInUserMap('tf_tasks_by_user', 'member')
+  updateFieldInUserMap('tf_ideas_by_user', 'author')
+
+  // 5. tf_members の name（id で同定して新名を反映）
+  try {
+    const raw = window.localStorage.getItem('tf_members')
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) {
+        let changed = false
+        const updated = arr.map(m => {
+          if (!m) return m
+          if (m.id === 'furusawa' && m.name === '古澤') {
+            changed = true
+            return { ...m, name: '古澤照彦' }
+          }
+          if (m.id === 'arino' && m.name === '有野') {
+            changed = true
+            return { ...m, name: '有野圭介' }
+          }
+          return m
+        })
+        if (changed) window.localStorage.setItem('tf_members', JSON.stringify(updated))
+      }
+    }
+  } catch {}
 }
 
 function applyKeyRenames() {
