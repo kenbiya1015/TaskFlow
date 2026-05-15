@@ -2663,11 +2663,11 @@
 .kanban-card-home-v2 {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px 10px;
+  border-radius: 9px;
+  padding: 5px 10px 5px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   text-align: left;
@@ -2683,14 +2683,14 @@
 .kanban-card-home-v2 .kanban-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
 }
 
 .kanban-card-home-v2 .kanban-card-text {
-  font-size: 14.5px;
+  font-size: 13.5px;
   font-weight: 600;
-  line-height: 1.55;
+  line-height: 1.45;
   color: var(--text);
   text-align: left;
   word-break: break-word;
@@ -2709,10 +2709,10 @@
 
 .kanban-card-action-row {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  padding-top: 6px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
 }
 
@@ -3074,7 +3074,7 @@
 .handoff-item {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 12px;
   align-items: flex-start;
   padding: 12px 14px;
@@ -3082,8 +3082,10 @@
   border: 1px solid var(--border);
   border-left: 4px solid #ea580c;
   border-radius: 10px;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  cursor: grab;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
+.handoff-item:active { cursor: grabbing; }
 .handoff-item:hover {
   box-shadow: 0 4px 12px -6px rgba(234, 88, 12, 0.25);
   border-color: #fdba74;
@@ -3093,6 +3095,34 @@
   grid-template-columns: 1fr;
   border-left-color: #2563eb;
   background: #f8fafc;
+  cursor: default;
+}
+.handoff-item.drag-over {
+  outline: 2px dashed #ea580c;
+  outline-offset: 2px;
+  background: #fff7ed;
+}
+.handoff-item.is-dragging {
+  opacity: 0.45;
+}
+body.kanban-touch-dragging-active .handoff-item.is-dragging {
+  transform: scale(1.02);
+  box-shadow: 0 10px 24px -8px rgba(234, 88, 12, 0.45);
+  opacity: 0.92;
+}
+
+.handoff-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+  padding-top: 4px;
+  flex-shrink: 0;
 }
 
 .handoff-body {
@@ -3157,10 +3187,11 @@
 
 @media (max-width: 768px) {
   .handoff-item {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto 1fr;
     padding: 10px 12px;
   }
   .handoff-actions {
+    grid-column: 1 / -1;
     justify-content: flex-end;
   }
   .handoff-date {
@@ -4014,6 +4045,11 @@ body.practice-touch-dragging .practice-row.is-dragging {
   .kanban-card-v2 .kanban-card-head { gap: 4px; }
   .kanban-card-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
   .task-item { padding: 5px 9px; margin-bottom: 2px; gap: 7px; }
+  /* マイページのタスク管理（2x2）もコンパクトに */
+  .kanban-card-home-v2 { padding: 5px 9px; gap: 3px; border-radius: 8px; }
+  .kanban-card-home-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
+  .kanban-card-home-v2 .kanban-card-meta { gap: 4px; }
+  .kanban-board-home .kanban-col-body { gap: 3px; }
 
   /* ログイン画面：モバイル調整 */
   .login-card { padding: 28px 22px 26px; border-radius: 20px; }

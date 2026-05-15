@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6)
@@ -26,6 +26,24 @@ export default function HandoffSection({ currentUser, onRestore }) {
   const [schedDay, setSchedDay] = useState('today')
   const [schedHour, setSchedHour] = useState(9)
   const [schedMsg, setSchedMsg] = useState('')
+
+  // D&D 並び替え
+  const [draggedId, setDraggedId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
+  const touchDragRef = useRef({})
+
+  // 互換性：order が未設定の項目に handedAt 降順で order を付与
+  useEffect(() => {
+    const list = balls || []
+    if (list.length === 0) return
+    if (!list.some(b => b.order == null)) return
+    const sorted = [...list].sort((a, b) =>
+      (b.handedAt || b.createdAt || 0) - (a.handedAt || a.createdAt || 0)
+    )
+    const orderMap = new Map(sorted.map((b, i) => [b.id, i + 1]))
+    setBalls(list.map(b => ({ ...b, order: b.order ?? orderMap.get(b.id) ?? 999 })))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const remove = (id) => setBalls((balls || []).filter(b => b.id !== id))
 
@@ -85,15 +103,98 @@ export default function HandoffSection({ currentUser, onRestore }) {
     setTimeout(() => closeSched(), 900)
   }
 
+  const reorderBalls = (fromId, toId) => {
+    if (!fromId || fromId === toId) return
+    const list = [...(balls || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    const fromIdx = list.findIndex(b => b.id === fromId)
+    const toIdx = list.findIndex(b => b.id === toId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const [moved] = list.splice(fromIdx, 1)
+    list.splice(toIdx, 0, moved)
+    setBalls(list.map((b, i) => ({ ...b, order: i + 1 })))
+  }
+
+  // タッチ長押しD&D
+  const handleItemPointerDown = (b, e) => {
+    if (e.pointerType !== 'touch') return
+    if (editingId === b.id) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const ref = touchDragRef.current
+    ref.active = false
+    ref.ballId = b.id
+
+    const cleanup = () => {
+      clearTimeout(ref.longPressTimer)
+      ref.longPressTimer = null
+      ref.active = false
+      document.body.classList.remove('kanban-touch-dragging-active')
+      setDraggedId(null)
+      setDragOverId(null)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onCancel)
+    }
+
+    const onMove = (ev) => {
+      if (!ref.active) {
+        const dx = Math.abs(ev.clientX - startX)
+        const dy = Math.abs(ev.clientY - startY)
+        if (dx > 8 || dy > 8) cleanup()
+        return
+      }
+      ev.preventDefault()
+      const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+      const itemEl = tgt && tgt.closest ? tgt.closest('[data-handoff-id]') : null
+      if (itemEl) {
+        const tid = itemEl.getAttribute('data-handoff-id')
+        if (tid && tid !== b.id) {
+          setDragOverId(tid)
+          return
+        }
+      }
+      setDragOverId(null)
+    }
+
+    const onUp = (ev) => {
+      if (ref.active) {
+        const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+        const itemEl = tgt && tgt.closest ? tgt.closest('[data-handoff-id]') : null
+        if (itemEl) {
+          const tid = itemEl.getAttribute('data-handoff-id')
+          if (tid && tid !== b.id) reorderBalls(b.id, tid)
+        }
+      }
+      cleanup()
+    }
+    const onCancel = () => cleanup()
+
+    ref.longPressTimer = setTimeout(() => {
+      ref.active = true
+      setDraggedId(b.id)
+      document.body.classList.add('kanban-touch-dragging-active')
+      if (navigator.vibrate) { try { navigator.vibrate(10) } catch { /* ignore */ } }
+    }, 350)
+
+    document.addEventListener('pointermove', onMove, { passive: false })
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onCancel)
+  }
+
   const list = balls || []
-  const sorted = [...list].sort((a, b) => (b.handedAt || b.createdAt || 0) - (a.handedAt || a.createdAt || 0))
+  const sorted = [...list].sort((a, b) => {
+    const ao = a.order ?? Number.MAX_SAFE_INTEGER
+    const bo = b.order ?? Number.MAX_SAFE_INTEGER
+    if (ao !== bo) return ao - bo
+    return (b.handedAt || b.createdAt || 0) - (a.handedAt || a.createdAt || 0)
+  })
 
   return (
     <div className="card handoff-section">
       <div className="card-title">
         🏐 相手ボール一覧
         <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-          {list.length} 件
+          {list.length} 件　·　ドラッグで並び替え
         </span>
       </div>
       {sorted.length === 0 ? (
@@ -105,8 +206,42 @@ export default function HandoffSection({ currentUser, onRestore }) {
           {sorted.map(b => {
             const isEditing = editingId === b.id
             const isSched = schedFor === b.id
+            const isDragOver = dragOverId === b.id
+            const isDragging = draggedId === b.id
             return (
-              <div key={b.id} className={`handoff-item ${isEditing ? 'is-editing' : ''}`}>
+              <div
+                key={b.id}
+                data-handoff-id={b.id}
+                className={`handoff-item ${isEditing ? 'is-editing' : ''} ${isDragOver ? 'drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                draggable={!isEditing}
+                onDragStart={e => {
+                  if (isEditing) { e.preventDefault(); return }
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', b.id)
+                  setDraggedId(b.id)
+                }}
+                onDragOver={e => {
+                  if (!draggedId || draggedId === b.id) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverId !== b.id) setDragOverId(b.id)
+                }}
+                onDragLeave={() => {
+                  if (dragOverId === b.id) setDragOverId(null)
+                }}
+                onDrop={e => {
+                  e.preventDefault()
+                  const fromId = e.dataTransfer.getData('text/plain') || draggedId
+                  if (fromId && fromId !== b.id) reorderBalls(fromId, b.id)
+                  setDraggedId(null)
+                  setDragOverId(null)
+                }}
+                onDragEnd={() => {
+                  setDraggedId(null)
+                  setDragOverId(null)
+                }}
+                onPointerDown={e => handleItemPointerDown(b, e)}
+              >
                 {isEditing ? (
                   <div className="handoff-edit">
                     <input
@@ -130,6 +265,7 @@ export default function HandoffSection({ currentUser, onRestore }) {
                   </div>
                 ) : (
                   <>
+                    <span className="handoff-drag-handle" title="ドラッグで並び替え" aria-hidden>⋮⋮</span>
                     <div className="handoff-body">
                       <div className="handoff-head">
                         <span className="handoff-to">→ {b.recipient}</span>

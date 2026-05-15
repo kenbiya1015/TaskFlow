@@ -82,16 +82,21 @@ export default function TaskList({ currentUser }) {
     const name = handoffName.trim()
     const text = handoffText.trim() || task.text
     if (!name) return
-    setBalls(prev => [{
-      id: uid(),
-      originalTaskId: task.id,
-      recipient: name,
-      text,
-      category: task.category,
-      priority: task.priority,
-      due: task.due,
-      handedAt: Date.now(),
-    }, ...(prev || [])])
+    setBalls(prev => {
+      const list = prev || []
+      const minOrder = list.length === 0 ? 1 : Math.min(...list.map(b => b.order ?? 999))
+      return [{
+        id: uid(),
+        originalTaskId: task.id,
+        recipient: name,
+        text,
+        category: task.category,
+        priority: task.priority,
+        due: task.due,
+        handedAt: Date.now(),
+        order: minOrder - 1,
+      }, ...list]
+    })
     setTasks(prev => prev.filter(t => t.id !== task.id))
     closeHandoffMenu()
   }
@@ -339,16 +344,26 @@ export default function TaskList({ currentUser }) {
   }, [tasks, filter])
 
   // カンバン用：カテゴリフィルタを適用しつつ A/B/C/D にグループ分け（未完了のみ）
+  // 各列内は期日が早い順、期日なしは末尾
   const tasksByPriority = useMemo(() => {
     const groups = { A: [], B: [], C: [], D: [] }
     tasks
       .filter(t => !t.done)
       .filter(t => filter === '全て' || t.category === filter)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .forEach(t => {
         const pri = normalizePriority(t.priority)
         groups[pri].push(t)
       })
+    const byDue = (a, b) => {
+      const aDue = a.due ? new Date(a.due).getTime() : Infinity
+      const bDue = b.due ? new Date(b.due).getTime() : Infinity
+      if (aDue !== bDue) return aDue - bDue
+      const ao = a.order ?? Number.MAX_SAFE_INTEGER
+      const bo = b.order ?? Number.MAX_SAFE_INTEGER
+      if (ao !== bo) return ao - bo
+      return (a.createdAt || 0) - (b.createdAt || 0)
+    }
+    for (const k of Object.keys(groups)) groups[k].sort(byDue)
     return groups
   }, [tasks, filter])
 
