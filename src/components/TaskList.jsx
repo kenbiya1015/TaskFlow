@@ -511,38 +511,33 @@ export default function TaskList({ currentUser }) {
                           }}
                           onPointerDown={e => handleCardPointerDown(t, e)}
                         >
-                          <div className="kanban-card-head">
-                            <span className={`priority-badge priority-${col}`}>{col}</span>
-                            <span className={`tag tag-${t.category}`}>{t.category}</span>
-                            <DueEdit due={t.due} onChange={v => updateDue(t.id, v)} />
-                            <div className="kanban-card-actions">
-                              <button
-                                className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
-                                onClick={() => toggle(t.id)}
-                                title={t.done ? '未完了に戻す' : '完了にする'}
-                              >{t.done ? '✓' : '○'}</button>
-                              <button
-                                className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
-                                onClick={() => isEditing ? cancelEdit() : startEdit(t)}
-                                title={isEditing ? '編集をキャンセル' : '編集'}
-                              >✏️</button>
-                              <button
-                                className={`kanban-card-btn kanban-card-sched ${schedMenuFor === t.id ? 'on' : ''}`}
-                                onClick={() => schedMenuFor === t.id ? closeSchedMenu() : openSchedMenu(t.id)}
-                                title="スケジュールに追加"
-                              >📅</button>
-                              <button
-                                className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
-                                onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
-                                title="相手ボールにする"
-                                aria-label="相手ボールにする"
-                              >🏐</button>
-                              <button
-                                className="kanban-card-btn kanban-card-del"
-                                onClick={() => remove(t.id)}
-                                title="削除"
-                              >🗑</button>
-                            </div>
+                          <div className="kanban-card-actions kanban-card-actions-top">
+                            <button
+                              className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
+                              onClick={() => toggle(t.id)}
+                              title={t.done ? '未完了に戻す' : '完了にする'}
+                            >{t.done ? '✓' : '○'}</button>
+                            <button
+                              className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
+                              onClick={() => isEditing ? cancelEdit() : startEdit(t)}
+                              title={isEditing ? '編集をキャンセル' : '編集'}
+                            >✏️</button>
+                            <button
+                              className={`kanban-card-btn kanban-card-sched ${schedMenuFor === t.id ? 'on' : ''}`}
+                              onClick={() => schedMenuFor === t.id ? closeSchedMenu() : openSchedMenu(t.id)}
+                              title="スケジュールに追加"
+                            >📅</button>
+                            <button
+                              className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
+                              onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
+                              title="相手ボールにする"
+                              aria-label="相手ボールにする"
+                            >🏐</button>
+                            <button
+                              className="kanban-card-btn kanban-card-del"
+                              onClick={() => remove(t.id)}
+                              title="削除"
+                            >🗑</button>
                           </div>
                           {isEditing ? (
                             <div className="kanban-card-edit-wrap">
@@ -564,6 +559,11 @@ export default function TaskList({ currentUser }) {
                           ) : (
                             <div className="kanban-card-text">{t.text}</div>
                           )}
+                          <div className="kanban-card-meta">
+                            <span className={`priority-badge priority-${col}`}>{col}</span>
+                            <span className={`tag tag-${t.category}`}>{t.category}</span>
+                            <DueEdit due={t.due} onChange={v => updateDue(t.id, v)} />
+                          </div>
                           {schedMenuFor === t.id && (
                             <div className="kanban-sched-pop" onClick={e => e.stopPropagation()}>
                               <div className="kanban-sched-title">📅 スケジュールに追加</div>
