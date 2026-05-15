@@ -620,10 +620,6 @@ export default function Home({ userName, onNavigate }) {
           📅 {heading}
           <span style={{ float: 'right', display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
             <span>{formatScheduleDate(date)}</span>
-            {isPrimary && tokenValid && (
-              <span>{gcalBusy ? '同期中...' : 'GCal 連携中'}</span>
-            )}
-            {isPrimary && !tokenValid && <span>GCal 未連携</span>}
             {isPrimary && isLateNight && (
               <span className="late-night-pill" title="22時以降は翌日表示に自動切替">夜モード</span>
             )}
@@ -1270,8 +1266,8 @@ export default function Home({ userName, onNavigate }) {
             ) : (
               myIdeas.map(i => (
                 <div key={i.id} className="idea-card" style={{ minHeight: 0, marginBottom: 8, padding: 12 }}>
-                  <div className="idea-text" style={{ fontSize: 13, marginBottom: 4 }}>{i.text}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  <div className="idea-text" style={{ marginBottom: 4 }}>{i.text}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                     {new Date(i.createdAt).toLocaleDateString('ja-JP')}
                   </div>
                 </div>

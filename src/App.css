@@ -3958,6 +3958,27 @@ body.practice-touch-dragging .practice-row.is-dragging {
   .purpose-hero-title { font-size: 36px; }
 }
 
+/* ===== マイページ：各セクション本文の文字サイズ統一（PC・スマホ共通） ===== */
+.home-page .merged-schedule-text { font-size: 15px; }
+.home-page .merged-schedule-time { font-size: 14px; }
+.home-page .routine-text { font-size: 15px; }
+.home-page .routine-icon { font-size: 18px; }
+.home-page .being-practice-text { font-size: 15px; }
+.home-page .future-title { font-size: 15px; }
+.home-page .future-meta { font-size: 12px; }
+.home-page .roadmap-phase { font-size: 15px; }
+.home-page .roadmap-goal { font-size: 13.5px; }
+.home-page .idea-text { font-size: 15px; line-height: 1.55; }
+.home-page .overall-text { font-size: 15px; line-height: 1.75; }
+.home-page .overall-label { font-size: 13px; }
+.home-page .strategy-summary-name { font-size: 15px; }
+.home-page .strategy-summary-strategy { font-size: 14px; line-height: 1.6; }
+.home-page .strategy-summary-tactics li { font-size: 13.5px; line-height: 1.55; }
+.home-page .strategy-summary-empty { font-size: 13px; }
+.home-page .handoff-to { font-size: 14px; }
+.home-page .handoff-text { font-size: 15px; line-height: 1.6; }
+.home-page .handoff-date { font-size: 12px; }
+
 @media (max-width: 768px) {
   /* スマホ：上部サイドバーは廃止、下部タブバーへ */
   .app {
