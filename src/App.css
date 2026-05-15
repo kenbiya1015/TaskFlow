@@ -3038,43 +3038,6 @@ body.kanban-touch-dragging-active .kanban-card-home-v2.is-dragging {
   margin: 0;
 }
 
-/* メタ情報（優先度・カテゴリ・期日）はカード下部に小さく */
-.kanban-card-v2 .kanban-card-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.kanban-card-v2 .kanban-card-meta .priority-badge {
-  min-width: 22px;
-  height: 18px;
-  font-size: 10px;
-  font-weight: 700;
-  border-radius: 4px;
-  padding: 0 6px;
-}
-
-.kanban-card-v2 .kanban-card-meta .tag {
-  font-size: 10px;
-  padding: 1px 7px;
-}
-
-.kanban-card-v2 .kanban-card-meta .due-badge {
-  font-size: 10px;
-  padding: 1px 7px;
-}
-
-/* アクションボタンは右上に小さくまとめる */
-.kanban-card-actions-top {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-}
-
 .kanban-card-v2.is-done {
   opacity: 0.55;
   background: var(--surface-2);
