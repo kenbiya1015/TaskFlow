@@ -717,7 +717,7 @@ export default function Home({ userName, onNavigate }) {
   }
 
   return (
-    <div>
+    <div className="home-page">
       {/* パーパスヒーロー */}
       <div className="purpose-hero">
         <div className="purpose-hero-content">
