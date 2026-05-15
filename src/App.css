@@ -4240,7 +4240,9 @@ body.practice-touch-dragging .practice-row.is-dragging {
   .kanban-board-full .kanban-col-body { padding: 6px 8px 8px; gap: 4px; }
   .task-item { padding: 8px 10px; margin-bottom: 3px; gap: 8px; }
   .task-text { font-size: 16px; font-weight: 700; line-height: 1.45; }
-  /* マイページのタスク管理（2x2）：TaskList と同じ kanban-card-v2 を使う */
+  /* マイページのタスク管理：スマホでは A・B・C・D を縦1列に積み、
+     ヘッド行（優先度・カテゴリ・期日・5ボタン）を1行に収める */
+  .kanban-board-home.kanban-board-2x2 { grid-template-columns: 1fr; }
   .kanban-board-home .kanban-col-body { gap: 2px; }
   .strategy-summary-grid { grid-template-columns: 1fr; }
 
