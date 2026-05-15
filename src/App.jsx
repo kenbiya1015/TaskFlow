@@ -237,10 +237,17 @@ export default function App() {
 function Login({ onLogin }) {
   return (
     <div className="login-screen">
+      <div className="login-bg-orbs" aria-hidden>
+        <span className="login-orb login-orb-1" />
+        <span className="login-orb login-orb-2" />
+        <span className="login-orb login-orb-3" />
+      </div>
       <div className="login-card">
         <div className="login-brand">heartrust</div>
-        <div className="login-title">健美屋へようこそ</div>
-        <div className="login-subtitle">SELECT　YOUR　ACCOUNT</div>
+        <h1 className="login-hero-title">
+          医療の前に、<br />健美屋がある生活を。
+        </h1>
+        <div className="login-hero-sub">今日も一歩、理想の自分へ。</div>
         <div className="login-users">
           {MEMBERS.map(m => (
             <button key={m.id} className="login-user" onClick={() => onLogin(m.name)}>
@@ -252,9 +259,8 @@ function Login({ onLogin }) {
               </div>
               <div className="login-user-info">
                 <div className="login-user-name">{m.name}</div>
-                <div className="login-user-role">{m.role}</div>
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: 18 }}>→</div>
+              <div className="login-user-arrow" aria-hidden>→</div>
             </button>
           ))}
         </div>
