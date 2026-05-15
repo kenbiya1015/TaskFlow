@@ -4230,18 +4230,24 @@ body.practice-touch-dragging .practice-row.is-dragging {
   /* カンバン：1カラム */
   .kanban-board { grid-template-columns: 1fr; }
 
-  /* タッチで押しやすい削除・アクションボタン */
-  .kanban-card-btn { width: 42px; height: 42px; font-size: 18px; }
-  .task-delete-btn { width: 42px; height: 42px; font-size: 18px; }
-  .kanban-card-actions { gap: 6px; }
+  /* アクションボタンは少し小さくしてテキストを主役に */
+  .kanban-card-btn { width: 34px; height: 34px; font-size: 15px; border-radius: 7px; }
+  .task-delete-btn { width: 34px; height: 34px; font-size: 15px; }
+  .kanban-card-actions { gap: 4px; }
   .kanban-sched-day { padding: 12px 10px; font-size: 14px; }
 
-  /* タスクカードをコンパクトに（モバイル） */
-  .kanban-board-full .kanban-col-body { padding: 6px 8px 8px; gap: 3px; }
-  .kanban-card-v2 { padding: 5px 9px; gap: 4px; border-radius: 8px; }
-  .kanban-card-v2 .kanban-card-head { gap: 4px; }
-  .kanban-card-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
-  .task-item { padding: 5px 9px; margin-bottom: 2px; gap: 7px; }
+  /* タスクカード：テキスト主役で読みやすく（モバイル） */
+  .kanban-board-full .kanban-col-body { padding: 6px 8px 8px; gap: 4px; }
+  .kanban-card-v2 { padding: 8px 10px; gap: 6px; border-radius: 9px; }
+  .kanban-card-v2 .kanban-card-head { gap: 5px; }
+  .kanban-card-v2 .kanban-card-text {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .task-item { padding: 8px 10px; margin-bottom: 3px; gap: 8px; }
+  .task-text { font-size: 16px; font-weight: 700; line-height: 1.45; }
   /* マイページのタスク管理（2x2）：TaskList と同じ kanban-card-v2 を使う */
   .kanban-board-home .kanban-col-body { gap: 2px; }
   .strategy-summary-grid { grid-template-columns: 1fr; }
