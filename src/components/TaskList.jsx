@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import HandoffSection from './HandoffSection'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6) // 6..24
 
@@ -40,6 +41,7 @@ function dueStatus(due) {
 export default function TaskList({ currentUser }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [, setSchedule] = useLocalStorage('tf_schedule', {})
+  const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', currentUser, [])
   const [filter, setFilter] = useState('全て')
   const [view, setView] = useState('kanban') // 'list' or 'kanban'
   const [draggedId, setDraggedId] = useState(null)
