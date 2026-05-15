@@ -1044,13 +1044,12 @@ export default function Home({ userName, onNavigate }) {
           <div className="card">
             <div className="card-title">
               🎯 今日やること
-              <span style={{ float: 'right', fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
                 {routineDone}/{(routineItems || []).length} 完了
                 <button
                   className="btn btn-small btn-secondary"
-                  style={{ marginLeft: 8 }}
                   onClick={() => setEditingRoutine(s => !s)}
-                >{editingRoutine ? '完了' : '編集'}</button>
+                >{editingRoutine ? '完了' : '編集 →'}</button>
               </span>
             </div>
             <div className="daily-routine">
@@ -1115,9 +1114,9 @@ export default function Home({ userName, onNavigate }) {
               🌟 なりたい自分の実践
               <button
                 className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
+                style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('being')}
-              >→ 編集</button>
+              >編集 →</button>
             </div>
             {myBeingItems.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>
@@ -1141,9 +1140,9 @@ export default function Home({ userName, onNavigate }) {
               🚀 今後の取り組み
               <button
                 className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
+                style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('future')}
-              >→ 一覧</button>
+              >一覧 →</button>
             </div>
             {futurePlans.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>
@@ -1174,12 +1173,11 @@ export default function Home({ userName, onNavigate }) {
           <div className="card">
             <div className="card-title">
               🗺️ ロードマップ進捗
-              <span style={{ float: 'right' }}>
-                <button
-                  className="btn btn-small btn-secondary"
-                  onClick={() => setEditingRoadmap(s => !s)}
-                >{editingRoadmap ? '完了' : '編集'}</button>
-              </span>
+              <button
+                className="btn btn-small btn-secondary"
+                style={{ marginLeft: 'auto' }}
+                onClick={() => setEditingRoadmap(s => !s)}
+              >{editingRoadmap ? '完了' : '編集 →'}</button>
             </div>
             <div className="roadmap-list">
               {(roadmapItems || []).map((r, i) => {
@@ -1257,9 +1255,9 @@ export default function Home({ userName, onNavigate }) {
               💡 自分のアイデア
               <button
                 className="btn btn-small btn-secondary"
-                style={{ float: 'right' }}
+                style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('ideas')}
-              >→ 一覧</button>
+              >一覧 →</button>
             </div>
             {myIdeas.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>まだありません</div>
@@ -1282,9 +1280,9 @@ export default function Home({ userName, onNavigate }) {
           🌐 {userName} さんの全体戦略・戦術
           <button
             className="btn btn-small btn-secondary"
-            style={{ float: 'right' }}
+            style={{ marginLeft: 'auto' }}
             onClick={() => onNavigate?.('strategy')}
-          >→ 編集</button>
+          >編集 →</button>
         </div>
         <div className="overall-grid">
           <div className="overall-block">
@@ -1304,9 +1302,9 @@ export default function Home({ userName, onNavigate }) {
             📂 カテゴリ別 戦略・戦術
             <button
               className="btn btn-small btn-secondary"
-              style={{ float: 'right' }}
+              style={{ marginLeft: 'auto' }}
               onClick={() => onNavigate?.('strategy')}
-            >→ 編集</button>
+            >編集 →</button>
           </div>
           <div className="strategy-summary-grid">
             {(strategyCategories || []).map(cat => {
