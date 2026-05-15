@@ -3,6 +3,7 @@ import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalSto
 import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
 import { fetchEvents } from '../lib/googleCalendar'
+import HandoffSection from './HandoffSection'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
@@ -56,6 +57,7 @@ function dueStatus(due) {
 export default function Home({ userName, onNavigate }) {
   // 個人別データ
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
+  const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
   const [overall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, { strategy: '', tactics: '' })
   const [futures] = useUserScopedStorage('tf_future_by_user', userName, [])
@@ -292,6 +294,59 @@ export default function Home({ userName, onNavigate }) {
     })
     setTaskSchedMsg(`${taskSchedDay === 'today' ? '今日' : '明日'} ${String(taskSchedHour).padStart(2, '0')}:00 に追加しました`)
     setTimeout(() => closeTaskSchedMenu(), 900)
+  }
+
+  // 相手ボール ポップオーバー
+  const [handoffFor, setHandoffFor] = useState(null)
+  const [handoffName, setHandoffName] = useState('')
+  const [handoffText, setHandoffText] = useState('')
+
+  const openHandoffMenu = (task) => {
+    setTaskSchedMenuFor(null)
+    setEditingTaskId(null)
+    setHandoffFor(task.id)
+    setHandoffName('')
+    setHandoffText(task.text || '')
+  }
+  const closeHandoffMenu = () => {
+    setHandoffFor(null)
+    setHandoffName('')
+    setHandoffText('')
+  }
+  const submitHandoff = (task) => {
+    const name = handoffName.trim()
+    const text = handoffText.trim() || task.text
+    if (!name) return
+    setBalls(prev => [{
+      id: uid(),
+      originalTaskId: task.id,
+      recipient: name,
+      text,
+      category: task.category,
+      priority: task.priority,
+      due: task.due,
+      handedAt: Date.now(),
+    }, ...(prev || [])])
+    setTasks(prev => prev.filter(t => t.id !== task.id))
+    closeHandoffMenu()
+  }
+
+  const restoreBallToTasks = (b) => {
+    setTasks(prev => {
+      const next = prev || []
+      const nextOrderVal = next.length === 0 ? 1 : Math.max(...next.map(t => t.order ?? 0)) + 1
+      return [{
+        id: uid(),
+        text: b.text,
+        category: b.category || '相手ボール',
+        member: userName,
+        priority: normalizePriority(b.priority),
+        due: b.due || '',
+        done: false,
+        createdAt: Date.now(),
+        order: nextOrderVal,
+      }, ...next]
+    })
   }
 
   // スケジュールへの予定追加（1カードずつ開閉）
@@ -689,6 +744,12 @@ export default function Home({ userName, onNavigate }) {
                               aria-label="スケジュールに追加"
                             >📅</button>
                             <button
+                              className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
+                              onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
+                              title="相手ボールにする"
+                              aria-label="相手ボールにする"
+                            >🏐</button>
+                            <button
                               className="kanban-card-btn kanban-card-del"
                               onClick={() => removeTask(t.id)}
                               title="削除"
@@ -725,6 +786,33 @@ export default function Home({ userName, onNavigate }) {
                                 <button className="btn btn-small" onClick={() => submitTaskScheduleAdd(t)}>＋ 追加</button>
                               </div>
                               {taskSchedMsg && <div className="kanban-sched-msg">{taskSchedMsg}</div>}
+                            </div>
+                          )}
+                          {handoffFor === t.id && (
+                            <div className="kanban-sched-pop kanban-handoff-pop" onClick={e => e.stopPropagation()}>
+                              <div className="kanban-sched-title">🏐 相手ボールにする</div>
+                              <input
+                                className="text-input"
+                                placeholder="渡した相手の名前"
+                                value={handoffName}
+                                onChange={e => setHandoffName(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') submitHandoff(t)
+                                  if (e.key === 'Escape') closeHandoffMenu()
+                                }}
+                                autoFocus
+                              />
+                              <textarea
+                                className="textarea"
+                                placeholder="内容"
+                                value={handoffText}
+                                onChange={e => setHandoffText(e.target.value)}
+                                rows={2}
+                              />
+                              <div className="kanban-sched-actions">
+                                <button className="btn btn-small btn-secondary" onClick={closeHandoffMenu}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => submitHandoff(t)}>＋ 追加</button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1022,6 +1110,8 @@ export default function Home({ userName, onNavigate }) {
           </div>
         </div>
       </div>
+
+      <HandoffSection currentUser={userName} onRestore={restoreBallToTasks} />
     </div>
   )
 }

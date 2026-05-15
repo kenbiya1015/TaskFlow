@@ -632,7 +632,7 @@
 
 .task-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto;
+  grid-template-columns: auto auto 1fr auto auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 8px 12px;
@@ -2715,7 +2715,8 @@
 
 .kanban-card-action-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
   justify-content: flex-end;
   padding-top: 6px;
   border-top: 1px dashed var(--border);
@@ -3025,6 +3026,152 @@
   background: #2563eb;
   border-color: #2563eb;
   color: #fff;
+}
+
+.kanban-card-btn.kanban-card-handoff:hover {
+  border-color: #c2410c;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.kanban-card-btn.kanban-card-handoff.on {
+  background: #ea580c;
+  border-color: #ea580c;
+  color: #fff;
+}
+
+.kanban-card-btn.handoff-btn-restore {
+  font-size: 18px !important;
+}
+.kanban-card-btn.handoff-btn-restore:hover {
+  border-color: #0d9488;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+/* ===== 相手ボール 追加ポップオーバー ===== */
+.kanban-handoff-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kanban-handoff-pop .textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+/* ===== 相手ボール一覧セクション ===== */
+.handoff-section {
+  margin-top: 16px;
+  border-top: 3px solid #fed7aa;
+  background: linear-gradient(180deg, #fff7ed 0%, var(--surface) 60%);
+}
+
+.handoff-section .card-title::before {
+  content: '';
+}
+
+.handoff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handoff-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid #ea580c;
+  border-radius: 10px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.handoff-item:hover {
+  box-shadow: 0 4px 12px -6px rgba(234, 88, 12, 0.25);
+  border-color: #fdba74;
+  border-left-color: #ea580c;
+}
+.handoff-item.is-editing {
+  grid-template-columns: 1fr;
+  border-left-color: #2563eb;
+  background: #f8fafc;
+}
+
+.handoff-body {
+  min-width: 0;
+}
+
+.handoff-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.handoff-to {
+  font-size: 13px;
+  font-weight: 700;
+  color: #c2410c;
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+  padding: 2px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.handoff-date {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.handoff-text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.handoff-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.handoff-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handoff-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.handoff-sched-pop {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .handoff-item {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+  }
+  .handoff-actions {
+    justify-content: flex-end;
+  }
+  .handoff-date {
+    margin-left: 0;
+  }
 }
 
 /* ===== カンバンカード インライン編集 ===== */

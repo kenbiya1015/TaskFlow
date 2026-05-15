@@ -61,6 +61,59 @@ export default function TaskList({ currentUser }) {
   const [schedHour, setSchedHour] = useState(9)
   const [schedMsg, setSchedMsg] = useState('')
 
+  // 相手ボール ポップオーバー（タスクID別に開閉）
+  const [handoffFor, setHandoffFor] = useState(null)
+  const [handoffName, setHandoffName] = useState('')
+  const [handoffText, setHandoffText] = useState('')
+
+  const openHandoffMenu = (task) => {
+    setSchedMenuFor(null)
+    setEditingId(null)
+    setHandoffFor(task.id)
+    setHandoffName('')
+    setHandoffText(task.text || '')
+  }
+  const closeHandoffMenu = () => {
+    setHandoffFor(null)
+    setHandoffName('')
+    setHandoffText('')
+  }
+  const submitHandoff = (task) => {
+    const name = handoffName.trim()
+    const text = handoffText.trim() || task.text
+    if (!name) return
+    setBalls(prev => [{
+      id: uid(),
+      originalTaskId: task.id,
+      recipient: name,
+      text,
+      category: task.category,
+      priority: task.priority,
+      due: task.due,
+      handedAt: Date.now(),
+    }, ...(prev || [])])
+    setTasks(prev => prev.filter(t => t.id !== task.id))
+    closeHandoffMenu()
+  }
+
+  const restoreBallToTasks = (b) => {
+    setTasks(prev => {
+      const next = prev || []
+      const nextOrderVal = next.length === 0 ? 1 : Math.max(...next.map(t => t.order ?? 0)) + 1
+      return [{
+        id: uid(),
+        text: b.text,
+        category: b.category || '相手ボール',
+        member: currentUser,
+        priority: normalizePriority(b.priority),
+        due: b.due || '',
+        done: false,
+        createdAt: Date.now(),
+        order: nextOrderVal,
+      }, ...next]
+    })
+  }
+
   const openSchedMenu = (taskId) => {
     setSchedMenuFor(taskId)
     setSchedDay('today')
@@ -461,6 +514,12 @@ export default function TaskList({ currentUser }) {
                                 title="スケジュールに追加"
                               >📅</button>
                               <button
+                                className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
+                                onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
+                                title="相手ボールにする"
+                                aria-label="相手ボールにする"
+                              >🏐</button>
+                              <button
                                 className="kanban-card-btn kanban-card-del"
                                 onClick={() => remove(t.id)}
                                 title="削除"
@@ -517,6 +576,33 @@ export default function TaskList({ currentUser }) {
                                 <button className="btn btn-small" onClick={() => submitScheduleAdd(t)}>＋ 追加</button>
                               </div>
                               {schedMsg && <div className="kanban-sched-msg">{schedMsg}</div>}
+                            </div>
+                          )}
+                          {handoffFor === t.id && (
+                            <div className="kanban-sched-pop kanban-handoff-pop" onClick={e => e.stopPropagation()}>
+                              <div className="kanban-sched-title">🏐 相手ボールにする</div>
+                              <input
+                                className="text-input"
+                                placeholder="渡した相手の名前"
+                                value={handoffName}
+                                onChange={e => setHandoffName(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') submitHandoff(t)
+                                  if (e.key === 'Escape') closeHandoffMenu()
+                                }}
+                                autoFocus
+                              />
+                              <textarea
+                                className="textarea"
+                                placeholder="内容"
+                                value={handoffText}
+                                onChange={e => setHandoffText(e.target.value)}
+                                rows={2}
+                              />
+                              <div className="kanban-sched-actions">
+                                <button className="btn btn-small btn-secondary" onClick={closeHandoffMenu}>キャンセル</button>
+                                <button className="btn btn-small" onClick={() => submitHandoff(t)}>＋ 追加</button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -604,12 +690,20 @@ export default function TaskList({ currentUser }) {
                 ) : (
                   <span className="task-meta">期日なし</span>
                 )}
+                <button
+                  className="task-delete-btn"
+                  onClick={() => openHandoffMenu(t)}
+                  title="相手ボールにする"
+                  aria-label="相手ボールにする"
+                >🏐</button>
                 <button className="task-delete-btn" onClick={() => remove(t.id)} title="削除" aria-label="タスクを削除">🗑</button>
               </li>
             )
           })}
         </ul>
       )}
+
+      <HandoffSection currentUser={currentUser} onRestore={restoreBallToTasks} />
     </div>
   )
 }
