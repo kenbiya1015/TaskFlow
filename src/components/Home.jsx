@@ -810,7 +810,7 @@ export default function Home({ userName, onNavigate }) {
       )}
 
       {/* タスク管理 */}
-      <div className="card">
+      <div className="card tasks-card-home">
         <div className="card-title">
           🗂 タスク管理
           <button
