@@ -705,7 +705,7 @@ export default function Home({ userName, onNavigate }) {
 
         <div style={{ marginTop: 10, textAlign: 'right' }}>
           <button className="btn btn-small btn-secondary" onClick={() => onNavigate?.('schedule')}>
-            編集 →
+            編集
           </button>
         </div>
       </div>
@@ -1049,7 +1049,7 @@ export default function Home({ userName, onNavigate }) {
                 <button
                   className="btn btn-small btn-secondary"
                   onClick={() => setEditingRoutine(s => !s)}
-                >{editingRoutine ? '完了' : '編集 →'}</button>
+                >{editingRoutine ? '完了' : '編集'}</button>
               </span>
             </div>
             <div className="daily-routine">
@@ -1116,7 +1116,7 @@ export default function Home({ userName, onNavigate }) {
                 className="btn btn-small btn-secondary"
                 style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('being')}
-              >編集 →</button>
+              >編集</button>
             </div>
             {myBeingItems.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>
@@ -1142,7 +1142,7 @@ export default function Home({ userName, onNavigate }) {
                 className="btn btn-small btn-secondary"
                 style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('future')}
-              >一覧 →</button>
+              >一覧</button>
             </div>
             {futurePlans.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>
@@ -1177,7 +1177,7 @@ export default function Home({ userName, onNavigate }) {
                 className="btn btn-small btn-secondary"
                 style={{ marginLeft: 'auto' }}
                 onClick={() => setEditingRoadmap(s => !s)}
-              >{editingRoadmap ? '完了' : '編集 →'}</button>
+              >{editingRoadmap ? '完了' : '編集'}</button>
             </div>
             <div className="roadmap-list">
               {(roadmapItems || []).map((r, i) => {
@@ -1257,7 +1257,7 @@ export default function Home({ userName, onNavigate }) {
                 className="btn btn-small btn-secondary"
                 style={{ marginLeft: 'auto' }}
                 onClick={() => onNavigate?.('ideas')}
-              >一覧 →</button>
+              >一覧</button>
             </div>
             {myIdeas.length === 0 ? (
               <div className="empty" style={{ padding: 16, fontSize: 12 }}>まだありません</div>
@@ -1282,7 +1282,7 @@ export default function Home({ userName, onNavigate }) {
             className="btn btn-small btn-secondary"
             style={{ marginLeft: 'auto' }}
             onClick={() => onNavigate?.('strategy')}
-          >編集 →</button>
+          >編集</button>
         </div>
         <div className="overall-grid">
           <div className="overall-block">
@@ -1304,7 +1304,7 @@ export default function Home({ userName, onNavigate }) {
               className="btn btn-small btn-secondary"
               style={{ marginLeft: 'auto' }}
               onClick={() => onNavigate?.('strategy')}
-            >編集 →</button>
+            >編集</button>
           </div>
           <div className="strategy-summary-grid">
             {(strategyCategories || []).map(cat => {
