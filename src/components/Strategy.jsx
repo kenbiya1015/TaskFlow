@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
-import { DEFAULT_STRATEGIES } from '../data/strategyDefaults'
+import { DEFAULT_STRATEGIES, DEFAULT_OVERALL } from '../data/strategyDefaults'
 
 export const STRATEGY_CATEGORIES = [
   { id: 'kenbiya_office',   name: '健美屋オフィス', emoji: '🏢', color: '#2f6fed' },
@@ -14,21 +14,6 @@ const PALETTE = ['#2f6fed', '#1f9e6a', '#d97706', '#a52663', '#4a5160', '#9333ea
 
 function emptyEntry() {
   return { strategy: '', tactics: [] }
-}
-
-const DEFAULT_OVERALL = {
-  strategy:
-    '志村直紀という人間そのものが起点。\n' +
-    '理学療法士 × 整体師 × 健康食品 × 経営者の4軸で唯一無二のポジションを築き、\n' +
-    '「売上 → 認知 → 仕組み」の順番で迷わずやり切る。',
-  tactics:
-    '① 売上を作る（最優先）\n' +
-    '② 認知を広げる（毎日コツコツ）\n' +
-    '③ 仕組みを作る（並行して少しずつ）\n' +
-    '\n' +
-    '・月商110万円のラインを早期に確立\n' +
-    '・SNS と LINE で「お客様の変化」を中心に発信\n' +
-    '・属人化させず、再現できる型に落とし込む',
 }
 
 export default function Strategy({ currentUser }) {
@@ -212,8 +197,6 @@ export default function Strategy({ currentUser }) {
 
       {cats.map(cat => {
         const e = get(cat.id)
-        const open = (e.tactics || []).filter(t => !t.done).length
-        const total = (e.tactics || []).length
         const isEditing = editingCatId === cat.id
         return (
           <div key={cat.id} className="strategy-card">
@@ -255,7 +238,6 @@ export default function Strategy({ currentUser }) {
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div className="strategy-cat-count">戦術 {open}/{total}</div>
                 <button
                   className="btn btn-small btn-secondary"
                   onClick={() => setEditingCatId(isEditing ? null : cat.id)}

@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { findMember } from '../members'
-import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
+import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY, DEFAULT_OVERALL } from '../data/strategyDefaults'
 import { fetchEvents } from '../lib/googleCalendar'
 import HandoffSection from './HandoffSection'
 
@@ -59,7 +59,17 @@ export default function Home({ userName, onNavigate }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
   const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
-  const [overall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, { strategy: '', tactics: '' })
+  const [overall, setOverall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, DEFAULT_OVERALL)
+  // 既存ユーザーが空オブジェクトや空文字列を保存していたら、デフォルトに補完
+  // （Strategy ページを開かなくてもマイページに反映されるようにする）
+  useEffect(() => {
+    if (!userName) return
+    const isEmpty = !overall
+      || typeof overall !== 'object'
+      || (!overall.strategy && !overall.tactics)
+    if (isEmpty) setOverall(DEFAULT_OVERALL)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userName])
   const [strategiesData] = useUserScopedStorage('tf_strategies_by_user', userName, {})
   const [strategyCategories] = useUserScopedStorage('tf_strategy_categories_by_user', userName, [])
   const [futures] = useUserScopedStorage('tf_future_by_user', userName, [])
@@ -849,7 +859,7 @@ export default function Home({ userName, onNavigate }) {
                         <div
                           key={t.id}
                           data-home-card-id={t.id}
-                          className={`kanban-card kanban-card-home-v2 ${t.done ? 'is-done' : ''} ${isCardOver ? 'drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                          className={`kanban-card-v2 ${t.done ? 'is-done' : ''} ${isCardOver ? 'drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
                           draggable={!isEditing}
                           onDragStart={e => {
                             if (isEditing) { e.preventDefault(); return }
@@ -884,9 +894,37 @@ export default function Home({ userName, onNavigate }) {
                           }}
                           onPointerDown={e => handleHomeCardPointerDown(t, e)}
                         >
-                          <div className="kanban-card-meta">
+                          <div className="kanban-card-head">
+                            <span className={`priority-badge priority-${col.key}`}>{col.key}</span>
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
                             {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                            <div className="kanban-card-actions">
+                              <button
+                                className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
+                                onClick={() => toggleTaskDone(t.id)}
+                                title={t.done ? '未完了に戻す' : '完了にする'}
+                              >{t.done ? '✓' : '○'}</button>
+                              <button
+                                className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
+                                onClick={() => isEditing ? cancelEditTask() : startEditTask(t)}
+                                title={isEditing ? '編集をキャンセル' : '編集'}
+                              >✏️</button>
+                              <button
+                                className={`kanban-card-btn kanban-card-sched ${taskSchedMenuFor === t.id ? 'on' : ''}`}
+                                onClick={() => taskSchedMenuFor === t.id ? closeTaskSchedMenu() : openTaskSchedMenu(t.id)}
+                                title="スケジュールに追加"
+                              >📅</button>
+                              <button
+                                className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
+                                onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
+                                title="相手ボールにする"
+                              >🏐</button>
+                              <button
+                                className="kanban-card-btn kanban-card-del"
+                                onClick={() => removeTask(t.id)}
+                                title="削除"
+                              >🗑</button>
+                            </div>
                           </div>
                           {isEditing ? (
                             <div className="kanban-card-edit-wrap">
@@ -908,38 +946,6 @@ export default function Home({ userName, onNavigate }) {
                           ) : (
                             <div className="kanban-card-text">{t.text}</div>
                           )}
-                          <div className="kanban-card-action-row">
-                            <button
-                              className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
-                              onClick={() => toggleTaskDone(t.id)}
-                              title={t.done ? '未完了に戻す' : '完了にする'}
-                              aria-label="完了の切り替え"
-                            >✓</button>
-                            <button
-                              className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
-                              onClick={() => isEditing ? cancelEditTask() : startEditTask(t)}
-                              title={isEditing ? '編集をキャンセル' : '編集'}
-                              aria-label="タスクを編集"
-                            >✏️</button>
-                            <button
-                              className={`kanban-card-btn kanban-card-sched ${taskSchedMenuFor === t.id ? 'on' : ''}`}
-                              onClick={() => taskSchedMenuFor === t.id ? closeTaskSchedMenu() : openTaskSchedMenu(t.id)}
-                              title="スケジュールに追加"
-                              aria-label="スケジュールに追加"
-                            >📅</button>
-                            <button
-                              className={`kanban-card-btn kanban-card-handoff ${handoffFor === t.id ? 'on' : ''}`}
-                              onClick={() => handoffFor === t.id ? closeHandoffMenu() : openHandoffMenu(t)}
-                              title="相手ボールにする"
-                              aria-label="相手ボールにする"
-                            >🏐</button>
-                            <button
-                              className="kanban-card-btn kanban-card-del"
-                              onClick={() => removeTask(t.id)}
-                              title="削除"
-                              aria-label="タスクを削除"
-                            >🗑</button>
-                          </div>
                           {taskSchedMenuFor === t.id && (
                             <div className="kanban-sched-pop" onClick={e => e.stopPropagation()}>
                               <div className="kanban-sched-title">📅 スケジュールに追加</div>
@@ -1282,15 +1288,11 @@ export default function Home({ userName, onNavigate }) {
         <div className="overall-grid">
           <div className="overall-block">
             <div className="overall-label">🧭 戦略</div>
-            <div className="overall-text">
-              {overall.strategy || <span className="overall-empty">戦略ページから入力してください</span>}
-            </div>
+            <div className="overall-text">{overall?.strategy || ''}</div>
           </div>
           <div className="overall-block">
             <div className="overall-label">⚙️ 戦術</div>
-            <div className="overall-text">
-              {overall.tactics || <span className="overall-empty">戦略ページから入力してください</span>}
-            </div>
+            <div className="overall-text">{overall?.tactics || ''}</div>
           </div>
         </div>
       </div>
@@ -1309,10 +1311,8 @@ export default function Home({ userName, onNavigate }) {
             {(strategyCategories || []).map(cat => {
               const entry = (strategiesData || {})[cat.id] || { strategy: '', tactics: [] }
               const tactics = entry.tactics || []
-              const openCount = tactics.filter(t => !t.done).length
-              const total = tactics.length
-              const openTactics = tactics.filter(t => !t.done).slice(0, 3)
-              const hasContent = (entry.strategy && entry.strategy.trim()) || total > 0
+              const openTactics = tactics.filter(t => !t.done)
+              const hasContent = (entry.strategy && entry.strategy.trim()) || tactics.length > 0
               return (
                 <div
                   key={cat.id}
@@ -1322,7 +1322,6 @@ export default function Home({ userName, onNavigate }) {
                   <div className="strategy-summary-head">
                     <span className="strategy-summary-emoji">{cat.emoji}</span>
                     <span className="strategy-summary-name">{cat.name}</span>
-                    <span className="strategy-summary-count">{openCount}/{total}</span>
                   </div>
                   {!hasContent ? (
                     <div className="strategy-summary-empty">未入力</div>
@@ -1336,9 +1335,6 @@ export default function Home({ userName, onNavigate }) {
                           {openTactics.map(t => (
                             <li key={t.id}>{t.text}</li>
                           ))}
-                          {openCount > openTactics.length && (
-                            <li className="strategy-summary-more">+{openCount - openTactics.length} 件</li>
-                          )}
                         </ul>
                       )}
                     </>

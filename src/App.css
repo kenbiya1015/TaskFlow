@@ -3800,18 +3800,6 @@ body.practice-touch-dragging .practice-row.is-dragging {
   white-space: nowrap;
 }
 
-.strategy-summary-count {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  padding: 2px 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .strategy-summary-empty {
   font-size: 12px;
   color: var(--text-muted);
@@ -4183,12 +4171,8 @@ body.practice-touch-dragging .practice-row.is-dragging {
   .kanban-card-v2 .kanban-card-head { gap: 4px; }
   .kanban-card-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
   .task-item { padding: 5px 9px; margin-bottom: 2px; gap: 7px; }
-  /* マイページのタスク管理（2x2）もコンパクトに */
-  .kanban-card-home-v2 { padding: 4px 8px; gap: 3px; border-radius: 7px; }
-  .kanban-card-home-v2 .kanban-card-text { font-size: 13px; line-height: 1.35; }
-  .kanban-card-home-v2 .kanban-card-meta { gap: 3px; }
+  /* マイページのタスク管理（2x2）：TaskList と同じ kanban-card-v2 を使う */
   .kanban-board-home .kanban-col-body { gap: 2px; }
-  .kanban-card-action-row { padding-top: 2px; gap: 4px; }
   .strategy-summary-grid { grid-template-columns: 1fr; }
 
   /* ログイン画面：モバイル調整 */
