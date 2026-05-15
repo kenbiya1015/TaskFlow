@@ -2451,6 +2451,10 @@
   font-size: 14px;
 }
 
+.kanban-board-home .kanban-col-body {
+  gap: 3px;
+}
+
 .kanban-column {
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -2663,21 +2667,40 @@
 .kanban-card-home-v2 {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 5px 10px 5px;
+  border-radius: 8px;
+  padding: 4px 9px 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   text-align: left;
   position: relative;
+  cursor: grab;
 }
+
+.kanban-card-home-v2:active { cursor: grabbing; }
 
 .kanban-card-home-v2:hover {
   transform: translateY(-1px);
   border-color: var(--border-strong);
   box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.12);
+}
+
+.kanban-card-home-v2.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-soft, #ecfdf5);
+}
+
+.kanban-card-home-v2.is-dragging {
+  opacity: 0.45;
+}
+
+body.kanban-touch-dragging-active .kanban-card-home-v2.is-dragging {
+  transform: scale(1.03);
+  box-shadow: 0 10px 24px -8px rgba(13, 148, 136, 0.45);
+  opacity: 0.92;
 }
 
 .kanban-card-home-v2 .kanban-card-meta {
@@ -2709,10 +2732,11 @@
 
 .kanban-card-action-row {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  padding-top: 4px;
+  padding-top: 3px;
+  margin-top: 1px;
   border-top: 1px dashed var(--border);
 }
 
@@ -3727,6 +3751,120 @@ body.practice-touch-dragging .practice-row.is-dragging {
   margin-top: 24px;
 }
 
+/* ===== マイページ カテゴリ別戦略サマリー ===== */
+.strategy-summary-card {
+  margin-top: 16px;
+}
+
+.strategy-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.strategy-summary-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.strategy-summary-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -8px rgba(15, 23, 42, 0.18);
+}
+
+.strategy-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.strategy-summary-emoji {
+  font-size: 20px;
+}
+
+.strategy-summary-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strategy-summary-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.strategy-summary-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.strategy-summary-strategy {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.strategy-summary-tactics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.strategy-summary-tactics li {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft, var(--text));
+  padding-left: 14px;
+  position: relative;
+}
+
+.strategy-summary-tactics li::before {
+  content: '・';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.strategy-summary-tactics li.strategy-summary-more {
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.strategy-summary-tactics li.strategy-summary-more::before {
+  content: '+';
+}
+
 /* ===== 夜モードピル ===== */
 .late-night-pill {
   display: inline-block;
@@ -4046,10 +4184,12 @@ body.practice-touch-dragging .practice-row.is-dragging {
   .kanban-card-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
   .task-item { padding: 5px 9px; margin-bottom: 2px; gap: 7px; }
   /* マイページのタスク管理（2x2）もコンパクトに */
-  .kanban-card-home-v2 { padding: 5px 9px; gap: 3px; border-radius: 8px; }
-  .kanban-card-home-v2 .kanban-card-text { font-size: 13px; line-height: 1.4; }
-  .kanban-card-home-v2 .kanban-card-meta { gap: 4px; }
-  .kanban-board-home .kanban-col-body { gap: 3px; }
+  .kanban-card-home-v2 { padding: 4px 8px; gap: 3px; border-radius: 7px; }
+  .kanban-card-home-v2 .kanban-card-text { font-size: 13px; line-height: 1.35; }
+  .kanban-card-home-v2 .kanban-card-meta { gap: 3px; }
+  .kanban-board-home .kanban-col-body { gap: 2px; }
+  .kanban-card-action-row { padding-top: 2px; gap: 4px; }
+  .strategy-summary-grid { grid-template-columns: 1fr; }
 
   /* ログイン画面：モバイル調整 */
   .login-card { padding: 28px 22px 26px; border-radius: 20px; }

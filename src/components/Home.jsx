@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY } from '../data/strategyDefaults'
@@ -60,6 +60,8 @@ export default function Home({ userName, onNavigate }) {
   const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
   const [overall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, { strategy: '', tactics: '' })
+  const [strategiesData] = useUserScopedStorage('tf_strategies_by_user', userName, {})
+  const [strategyCategories] = useUserScopedStorage('tf_strategy_categories_by_user', userName, [])
   const [futures] = useUserScopedStorage('tf_future_by_user', userName, [])
   const [routineItems, setRoutineItems] = useUserScopedStorage('tf_routine_items_by_user', userName, DAILY_ROUTINE)
   const [roadmapItems, setRoadmapItems] = useUserScopedStorage('tf_roadmap_by_user', userName, ROADMAP)
@@ -165,7 +167,7 @@ export default function Home({ userName, onNavigate }) {
   }, [userName])
 
   // タスクをA/B/C/Dにグループ分け（未完了のみ）
-  // 各列内は期日が早い順、期日なしは末尾
+  // 並び順は order を優先（ドラッグ&ドロップで変更可）、同値なら期日が早い順
   const tasksByPriority = useMemo(() => {
     const groups = { A: [], B: [], C: [], D: [] }
     for (const t of tasks) {
@@ -173,16 +175,16 @@ export default function Home({ userName, onNavigate }) {
       const pri = normalizePriority(t.priority)
       groups[pri].push(t)
     }
-    const byDue = (a, b) => {
-      const aDue = a.due ? new Date(a.due).getTime() : Infinity
-      const bDue = b.due ? new Date(b.due).getTime() : Infinity
-      if (aDue !== bDue) return aDue - bDue
+    const cmp = (a, b) => {
       const ao = a.order ?? Number.MAX_SAFE_INTEGER
       const bo = b.order ?? Number.MAX_SAFE_INTEGER
       if (ao !== bo) return ao - bo
+      const aDue = a.due ? new Date(a.due).getTime() : Infinity
+      const bDue = b.due ? new Date(b.due).getTime() : Infinity
+      if (aDue !== bDue) return aDue - bDue
       return (a.createdAt || 0) - (b.createdAt || 0)
     }
-    for (const k of Object.keys(groups)) groups[k].sort(byDue)
+    for (const k of Object.keys(groups)) groups[k].sort(cmp)
     return groups
   }, [tasks])
 
@@ -243,6 +245,114 @@ export default function Home({ userName, onNavigate }) {
 
   const toggleTaskDone = (id) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  }
+
+  const updateTaskPriority = (id, p) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, priority: p } : t))
+  }
+
+  // タスク D&D 並び替え
+  const [draggedTaskId, setDraggedTaskId] = useState(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
+  const touchTaskDragRef = useRef({})
+
+  // カード→カードのドロップ：並び替え＋必要なら列(優先度)も変更
+  const dropOnCard = (fromId, toId) => {
+    if (!fromId || fromId === toId) return
+    setTasks(prev => {
+      const target = prev.find(t => t.id === toId)
+      if (!target) return prev
+      const list = [...prev].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      const fromIdx = list.findIndex(t => t.id === fromId)
+      if (fromIdx < 0) return prev
+      const moved = { ...list[fromIdx], priority: normalizePriority(target.priority) }
+      list.splice(fromIdx, 1)
+      const newToIdx = list.findIndex(t => t.id === toId)
+      list.splice(newToIdx, 0, moved)
+      return list.map((t, i) => ({ ...t, order: i + 1 }))
+    })
+  }
+
+  // タッチ長押しD&D（モバイル）
+  const handleHomeCardPointerDown = (task, e) => {
+    if (e.pointerType !== 'touch') return
+    if (editingTaskId === task.id) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const ref = touchTaskDragRef.current
+    ref.active = false
+    ref.taskId = task.id
+
+    const cleanup = () => {
+      clearTimeout(ref.longPressTimer)
+      ref.longPressTimer = null
+      ref.active = false
+      document.body.classList.remove('kanban-touch-dragging-active')
+      setDraggedTaskId(null)
+      setDragOverTaskId(null)
+      setDragOverCol(null)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onCancel)
+    }
+
+    const onMove = (ev) => {
+      if (!ref.active) {
+        const dx = Math.abs(ev.clientX - startX)
+        const dy = Math.abs(ev.clientY - startY)
+        if (dx > 8 || dy > 8) cleanup()
+        return
+      }
+      ev.preventDefault()
+      const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+      const cardEl = tgt && tgt.closest ? tgt.closest('[data-home-card-id]') : null
+      const colEl = tgt && tgt.closest ? tgt.closest('[data-home-col]') : null
+      if (cardEl) {
+        const tid = cardEl.getAttribute('data-home-card-id')
+        if (tid && tid !== task.id) {
+          setDragOverTaskId(tid)
+          setDragOverCol(null)
+          return
+        }
+      }
+      if (colEl) {
+        const col = colEl.getAttribute('data-home-col')
+        setDragOverCol(col)
+        setDragOverTaskId(null)
+      } else {
+        setDragOverTaskId(null)
+        setDragOverCol(null)
+      }
+    }
+
+    const onUp = (ev) => {
+      if (ref.active) {
+        const tgt = document.elementFromPoint(ev.clientX, ev.clientY)
+        const cardEl = tgt && tgt.closest ? tgt.closest('[data-home-card-id]') : null
+        const colEl = tgt && tgt.closest ? tgt.closest('[data-home-col]') : null
+        if (cardEl) {
+          const tid = cardEl.getAttribute('data-home-card-id')
+          if (tid && tid !== task.id) dropOnCard(task.id, tid)
+        } else if (colEl) {
+          const col = colEl.getAttribute('data-home-col')
+          if (col) updateTaskPriority(task.id, col)
+        }
+      }
+      cleanup()
+    }
+    const onCancel = () => cleanup()
+
+    ref.longPressTimer = setTimeout(() => {
+      ref.active = true
+      setDraggedTaskId(task.id)
+      document.body.classList.add('kanban-touch-dragging-active')
+      if (navigator.vibrate) { try { navigator.vibrate(10) } catch { /* ignore */ } }
+    }, 350)
+
+    document.addEventListener('pointermove', onMove, { passive: false })
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onCancel)
   }
 
   // タスクテキストの編集
@@ -697,8 +807,30 @@ export default function Home({ userName, onNavigate }) {
         <div className="kanban-board kanban-board-2x2 kanban-board-home">
           {KANBAN_COLS.map(col => {
             const items = tasksByPriority[col.key] || []
+            const isColOver = dragOverCol === col.key
             return (
-              <div key={col.key} className={`kanban-column kanban-col-${col.key}`}>
+              <div
+                key={col.key}
+                data-home-col={col.key}
+                className={`kanban-column kanban-col-${col.key} ${isColOver ? 'is-over' : ''}`}
+                onDragOver={e => {
+                  if (!draggedTaskId) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dragOverCol !== col.key) setDragOverCol(col.key)
+                }}
+                onDragLeave={() => {
+                  if (dragOverCol === col.key) setDragOverCol(null)
+                }}
+                onDrop={e => {
+                  e.preventDefault()
+                  const id = e.dataTransfer.getData('text/plain') || draggedTaskId
+                  if (id) updateTaskPriority(id, col.key)
+                  setDraggedTaskId(null)
+                  setDragOverCol(null)
+                  setDragOverTaskId(null)
+                }}
+              >
                 <div className="kanban-col-header kanban-col-header-lg">
                   <span className={`priority-badge priority-${col.key} priority-badge-lg`}>{col.key}</span>
                   <span className="kanban-col-label kanban-col-label-lg">{col.label}</span>
@@ -706,13 +838,52 @@ export default function Home({ userName, onNavigate }) {
                 </div>
                 <div className="kanban-col-body">
                   {items.length === 0 ? (
-                    <div className="kanban-empty">なし</div>
+                    <div className="kanban-empty">ここにドロップで {col.key} に変更</div>
                   ) : (
                     items.slice(0, 6).map(t => {
                       const ds = dueStatus(t.due)
                       const isEditing = editingTaskId === t.id
+                      const isCardOver = dragOverTaskId === t.id
+                      const isDragging = draggedTaskId === t.id
                       return (
-                        <div key={t.id} className={`kanban-card kanban-card-home-v2 ${t.done ? 'is-done' : ''}`}>
+                        <div
+                          key={t.id}
+                          data-home-card-id={t.id}
+                          className={`kanban-card kanban-card-home-v2 ${t.done ? 'is-done' : ''} ${isCardOver ? 'drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
+                          draggable={!isEditing}
+                          onDragStart={e => {
+                            if (isEditing) { e.preventDefault(); return }
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', t.id)
+                            setDraggedTaskId(t.id)
+                          }}
+                          onDragOver={e => {
+                            if (!draggedTaskId || draggedTaskId === t.id) return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            e.dataTransfer.dropEffect = 'move'
+                            if (dragOverTaskId !== t.id) setDragOverTaskId(t.id)
+                            if (dragOverCol !== col.key) setDragOverCol(col.key)
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverTaskId === t.id) setDragOverTaskId(null)
+                          }}
+                          onDrop={e => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            const fromId = e.dataTransfer.getData('text/plain') || draggedTaskId
+                            if (fromId && fromId !== t.id) dropOnCard(fromId, t.id)
+                            setDraggedTaskId(null)
+                            setDragOverTaskId(null)
+                            setDragOverCol(null)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedTaskId(null)
+                            setDragOverTaskId(null)
+                            setDragOverCol(null)
+                          }}
+                          onPointerDown={e => handleHomeCardPointerDown(t, e)}
+                        >
                           <div className="kanban-card-meta">
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
                             {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
@@ -1123,6 +1294,61 @@ export default function Home({ userName, onNavigate }) {
           </div>
         </div>
       </div>
+
+      {(strategyCategories || []).length > 0 && (
+        <div className="card strategy-summary-card">
+          <div className="card-title">
+            📂 カテゴリ別 戦略・戦術
+            <button
+              className="btn btn-small btn-secondary"
+              style={{ float: 'right' }}
+              onClick={() => onNavigate?.('strategy')}
+            >→ 編集</button>
+          </div>
+          <div className="strategy-summary-grid">
+            {(strategyCategories || []).map(cat => {
+              const entry = (strategiesData || {})[cat.id] || { strategy: '', tactics: [] }
+              const tactics = entry.tactics || []
+              const openCount = tactics.filter(t => !t.done).length
+              const total = tactics.length
+              const openTactics = tactics.filter(t => !t.done).slice(0, 3)
+              const hasContent = (entry.strategy && entry.strategy.trim()) || total > 0
+              return (
+                <div
+                  key={cat.id}
+                  className="strategy-summary-tile"
+                  style={{ borderLeftColor: cat.color }}
+                >
+                  <div className="strategy-summary-head">
+                    <span className="strategy-summary-emoji">{cat.emoji}</span>
+                    <span className="strategy-summary-name">{cat.name}</span>
+                    <span className="strategy-summary-count">{openCount}/{total}</span>
+                  </div>
+                  {!hasContent ? (
+                    <div className="strategy-summary-empty">未入力</div>
+                  ) : (
+                    <>
+                      {entry.strategy && entry.strategy.trim() && (
+                        <div className="strategy-summary-strategy">{entry.strategy}</div>
+                      )}
+                      {openTactics.length > 0 && (
+                        <ul className="strategy-summary-tactics">
+                          {openTactics.map(t => (
+                            <li key={t.id}>{t.text}</li>
+                          ))}
+                          {openCount > openTactics.length && (
+                            <li className="strategy-summary-more">+{openCount - openTactics.length} 件</li>
+                          )}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <HandoffSection currentUser={userName} onRestore={restoreBallToTasks} />
     </div>

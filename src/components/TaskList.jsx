@@ -344,7 +344,7 @@ export default function TaskList({ currentUser }) {
   }, [tasks, filter])
 
   // カンバン用：カテゴリフィルタを適用しつつ A/B/C/D にグループ分け（未完了のみ）
-  // 各列内は期日が早い順、期日なしは末尾
+  // 並び順は order を優先（ドラッグ&ドロップで変更可）、同値なら期日が早い順
   const tasksByPriority = useMemo(() => {
     const groups = { A: [], B: [], C: [], D: [] }
     tasks
@@ -354,16 +354,16 @@ export default function TaskList({ currentUser }) {
         const pri = normalizePriority(t.priority)
         groups[pri].push(t)
       })
-    const byDue = (a, b) => {
-      const aDue = a.due ? new Date(a.due).getTime() : Infinity
-      const bDue = b.due ? new Date(b.due).getTime() : Infinity
-      if (aDue !== bDue) return aDue - bDue
+    const cmp = (a, b) => {
       const ao = a.order ?? Number.MAX_SAFE_INTEGER
       const bo = b.order ?? Number.MAX_SAFE_INTEGER
       if (ao !== bo) return ao - bo
+      const aDue = a.due ? new Date(a.due).getTime() : Infinity
+      const bDue = b.due ? new Date(b.due).getTime() : Infinity
+      if (aDue !== bDue) return aDue - bDue
       return (a.createdAt || 0) - (b.createdAt || 0)
     }
-    for (const k of Object.keys(groups)) groups[k].sort(byDue)
+    for (const k of Object.keys(groups)) groups[k].sort(cmp)
     return groups
   }, [tasks, filter])
 
