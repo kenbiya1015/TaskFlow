@@ -5,6 +5,7 @@ import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY, DEFAULT_OVERALL } from '../d
 import { fetchEvents } from '../lib/googleCalendar'
 import HandoffSection from './HandoffSection'
 import DueEdit from './DueEdit'
+import { ACCOUNT_MAP as SNS_ACCOUNT_MAP } from './SNS'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
@@ -60,6 +61,7 @@ export default function Home({ userName, onNavigate }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
   const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
+  const [snsPosts] = useUserScopedStorage('tf_sns_by_user', userName, [])
   const [overall, setOverall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, DEFAULT_OVERALL)
   // 既存ユーザーが空オブジェクトや空文字列を保存していたら、デフォルトに補完
   // （Strategy ページを開かなくてもマイページに反映されるようにする）
@@ -1272,6 +1274,40 @@ export default function Home({ userName, onNavigate }) {
               ))
             )}
           </div>
+      </div>
+
+      {/* SNSネタ */}
+      <div className="card sns-summary-card">
+        <div className="card-title">
+          📱 SNSネタ
+          <button
+            className="btn btn-small btn-secondary"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => onNavigate?.('sns')}
+          >一覧</button>
+        </div>
+        {(snsPosts || []).length === 0 ? (
+          <div className="empty" style={{ padding: 16, fontSize: 12 }}>
+            ネタはまだありません
+          </div>
+        ) : (
+          <ul className="sns-summary-list">
+            {[...(snsPosts || [])]
+              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+              .slice(0, 8)
+              .map(p => {
+                const acc = SNS_ACCOUNT_MAP[p.account]
+                const accLabel = acc?.name || p.account
+                return (
+                  <li key={p.id} className={`sns-summary-row sns-summary-status-${p.status}`}>
+                    <span className={`sns-account-pill sns-account-pill-${p.account}`}>{accLabel}</span>
+                    <span className={`sns-summary-status sns-summary-status-pill-${p.status}`}>{p.status}</span>
+                    <span className="sns-summary-text">{p.text}</span>
+                  </li>
+                )
+              })}
+          </ul>
+        )}
       </div>
 
       {/* 全体の戦略・戦術（最下部） */}

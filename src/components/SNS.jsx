@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
-const ACCOUNTS = [
-  { id: 'shimura', name: '志村アカウント', desc: '志村直紀 個人発信 ／ 想い・哲学・日常' },
+export const ACCOUNTS = [
   { id: 'kenbiya', name: '健美屋公式',     desc: '健美屋ブランド ／ 商品・体験・お客様の声' },
   { id: 'seitai',  name: '整体信玄',       desc: '整体信玄 ／ 健康情報・施術紹介・症例' },
+  { id: 'shimura', name: '志村アカウント', desc: '志村直紀 個人発信 ／ 想い・哲学・日常' },
 ]
-const ACCOUNT_MAP = Object.fromEntries(ACCOUNTS.map(a => [a.id, a]))
+export const ACCOUNT_MAP = Object.fromEntries(ACCOUNTS.map(a => [a.id, a]))
 
 const STATUSES = ['アイデア', '確定', '投稿済み']
 const STATUS_LABELS = {
@@ -15,11 +15,11 @@ const STATUS_LABELS = {
   '投稿済み':   '投稿済み',
 }
 
-const ALL = '__all__'
+export const ALL = '__all__'
 
 export default function SNS({ currentUser }) {
   const [posts, setPosts] = useUserScopedStorage('tf_sns_by_user', currentUser, [])
-  const [activeAccount, setActiveAccount] = useState('shimura')
+  const [activeAccount, setActiveAccount] = useState(ALL)
   const [text, setText] = useState('')
   const [status, setStatus] = useState('アイデア')
   const [scheduledFor, setScheduledFor] = useState('')
@@ -68,6 +68,14 @@ export default function SNS({ currentUser }) {
       </div>
 
       <div className="sns-tabs">
+        <button
+          className={`sns-tab ${activeAccount === ALL ? 'active' : ''}`}
+          onClick={() => setActiveAccount(ALL)}
+          title="全アカウントのネタを一覧表示"
+        >
+          📋 全ネタ一覧
+          <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>{posts.length}</span>
+        </button>
         {ACCOUNTS.map(a => (
           <button
             key={a.id}
@@ -80,14 +88,6 @@ export default function SNS({ currentUser }) {
             </span>
           </button>
         ))}
-        <button
-          className={`sns-tab ${activeAccount === ALL ? 'active' : ''}`}
-          onClick={() => setActiveAccount(ALL)}
-          title="全アカウントのネタを一覧表示"
-        >
-          📋 全ネタ一覧
-          <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>{posts.length}</span>
-        </button>
       </div>
 
       {activeAccount !== ALL && current && (

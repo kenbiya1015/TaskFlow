@@ -3979,6 +3979,78 @@ body.practice-touch-dragging .practice-row.is-dragging {
 .home-page .handoff-text { font-size: 15px; line-height: 1.6; }
 .home-page .handoff-date { font-size: 12px; }
 
+/* ===== Home：SNSネタ サマリー ===== */
+.sns-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sns-summary-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sns-summary-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 10px -6px rgba(15, 23, 42, 0.12);
+}
+
+.sns-summary-row .sns-account-pill {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.sns-summary-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.sns-summary-status-pill-アイデア { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.sns-summary-status-pill-確定      { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.sns-summary-status-pill-投稿済み  { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+
+.sns-summary-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .sns-summary-row {
+    grid-template-columns: auto auto;
+    gap: 6px;
+  }
+  .sns-summary-text {
+    grid-column: 1 / -1;
+    font-size: 14px;
+  }
+}
+
 @media (max-width: 768px) {
   /* スマホ：上部サイドバーは廃止、下部タブバーへ */
   .app {
