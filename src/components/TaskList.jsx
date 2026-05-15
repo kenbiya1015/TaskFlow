@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 import HandoffSection from './HandoffSection'
+import DueEdit from './DueEdit'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6) // 6..24
 
@@ -202,6 +203,8 @@ export default function TaskList({ currentUser }) {
   const remove = id => setTasks(tasks.filter(t => t.id !== id))
   const updatePriority = (id, p) =>
     setTasks(tasks.map(t => t.id === id ? { ...t, priority: p } : t))
+  const updateDue = (id, due) =>
+    setTasks(tasks.map(t => t.id === id ? { ...t, due } : t))
 
   // D&D 並び替え：fromId を toId の位置の直前へ移動
   const reorderTasks = (fromId, toId) => {
@@ -511,7 +514,7 @@ export default function TaskList({ currentUser }) {
                           <div className="kanban-card-head">
                             <span className={`priority-badge priority-${col}`}>{col}</span>
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
-                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                            <DueEdit due={t.due} onChange={v => updateDue(t.id, v)} />
                             <div className="kanban-card-actions">
                               <button
                                 className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
@@ -640,6 +643,12 @@ export default function TaskList({ currentUser }) {
                     onChange={() => toggle(t.id)}
                   />
                   <span className="kanban-done-text">{t.text}</span>
+                  <button
+                    className="kanban-done-del"
+                    onClick={() => remove(t.id)}
+                    title="削除"
+                    aria-label="このタスクを削除"
+                  >🗑</button>
                 </div>
               ))}
             </div>
@@ -700,11 +709,7 @@ export default function TaskList({ currentUser }) {
                 >
                   {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
-                {ds ? (
-                  <span className={`due-badge due-${ds.key}`} title={t.due}>{ds.label}</span>
-                ) : (
-                  <span className="task-meta">期日なし</span>
-                )}
+                <DueEdit due={t.due} onChange={v => updateDue(t.id, v)} />
                 <button
                   className="task-delete-btn"
                   onClick={() => openHandoffMenu(t)}

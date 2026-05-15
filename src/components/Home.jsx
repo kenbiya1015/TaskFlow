@@ -4,6 +4,7 @@ import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY, DEFAULT_OVERALL } from '../data/strategyDefaults'
 import { fetchEvents } from '../lib/googleCalendar'
 import HandoffSection from './HandoffSection'
+import DueEdit from './DueEdit'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
@@ -259,6 +260,10 @@ export default function Home({ userName, onNavigate }) {
 
   const updateTaskPriority = (id, p) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, priority: p } : t))
+  }
+
+  const updateTaskDue = (id, due) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, due } : t))
   }
 
   // タスク D&D 並び替え
@@ -897,7 +902,7 @@ export default function Home({ userName, onNavigate }) {
                           <div className="kanban-card-head">
                             <span className={`priority-badge priority-${col.key}`}>{col.key}</span>
                             <span className={`tag tag-${t.category}`}>{t.category}</span>
-                            {ds && <span className={`due-badge due-${ds.key}`}>{ds.label}</span>}
+                            <DueEdit due={t.due} onChange={v => updateTaskDue(t.id, v)} />
                             <div className="kanban-card-actions">
                               <button
                                 className={`kanban-card-btn kanban-card-done ${t.done ? 'on' : ''}`}
