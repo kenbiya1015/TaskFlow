@@ -3,6 +3,60 @@
   min-height: 100vh;
 }
 
+/* ===== 自動保存インジケーター（画面右上に固定） ===== */
+.save-status {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.86);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  animation: save-status-in 0.18s ease-out;
+  backdrop-filter: blur(6px);
+}
+.save-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fbbf24;
+}
+.save-status-saving .save-status-dot {
+  background: #fbbf24;
+  animation: save-status-pulse 1s ease-in-out infinite;
+}
+.save-status-saved {
+  background: rgba(5, 150, 105, 0.92);
+}
+.save-status-saved .save-status-dot {
+  background: #d1fae5;
+}
+@keyframes save-status-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes save-status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
+}
+@media (max-width: 768px) {
+  .save-status {
+    top: 10px;
+    right: 10px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+}
+
 /* ===== Login screen ===== */
 .login-screen {
   position: relative;

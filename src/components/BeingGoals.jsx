@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
+import { useAutoSave } from '../hooks/useAutoSave'
 
 export default function BeingGoals({ currentUser }) {
   const [data, setData] = useLocalStorage('tf_being', {})
@@ -41,17 +42,21 @@ export default function BeingGoals({ currentUser }) {
     setEditingId(item.id)
     setEditingText(item.text)
   }
-  const cancelEdit = () => {
+  const closeEdit = () => {
     setEditingId(null)
     setEditingText('')
   }
-  const saveEdit = (id) => {
-    const txt = editingText.trim()
-    if (!txt) { cancelEdit(); return }
-    writeItems(items.map(i => i.id === id ? { ...i, text: txt } : i))
-    setEditingId(null)
-    setEditingText('')
-  }
+
+  useAutoSave({ id: editingId, text: editingText }, (val) => {
+    if (!val.id) return
+    const txt = (val.text || '').trim()
+    if (!txt) return
+    setData(prev => {
+      const p = prev[me] || { description: '', items: [] }
+      const list = (p.items || []).map(i => i.id === val.id ? { ...i, text: txt } : i)
+      return { ...prev, [me]: { ...p, items: list } }
+    })
+  })
 
   const reorder = (fromId, toId) => {
     if (!fromId || fromId === toId) return
@@ -206,13 +211,11 @@ export default function BeingGoals({ currentUser }) {
                         value={editingText}
                         onChange={e => setEditingText(e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Enter') { e.preventDefault(); saveEdit(i.id) }
-                          if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+                          if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeEdit() }
                         }}
                         autoFocus
                       />
-                      <button className="btn btn-small" onClick={() => saveEdit(i.id)}>保存</button>
-                      <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
+                      <button className="btn btn-small btn-secondary" onClick={closeEdit}>閉じる</button>
                     </>
                   ) : (
                     <>

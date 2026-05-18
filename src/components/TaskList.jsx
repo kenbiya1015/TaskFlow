@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import { useAutoSave } from '../hooks/useAutoSave'
 import HandoffSection from './HandoffSection'
 import DueEdit from './DueEdit'
 
@@ -236,23 +237,23 @@ export default function TaskList({ currentUser }) {
     })
   }
 
-  // 編集
+  // 編集（自動保存：1秒のdebounce後に commit）
   const startEdit = (t) => {
     setEditingId(t.id)
     setEditText(t.text)
     setSchedMenuFor(null)
   }
-  const cancelEdit = () => {
+  const closeEdit = () => {
     setEditingId(null)
     setEditText('')
   }
-  const saveEdit = (id) => {
-    const txt = editText.trim()
-    if (!txt) { cancelEdit(); return }
-    setTasks(tasks.map(t => t.id === id ? { ...t, text: txt } : t))
-    setEditingId(null)
-    setEditText('')
-  }
+
+  useAutoSave({ id: editingId, text: editText }, (val) => {
+    if (!val.id) return
+    const txt = (val.text || '').trim()
+    if (!txt) return
+    setTasks(prev => prev.map(t => t.id === val.id ? { ...t, text: txt } : t))
+  })
 
   // タッチでの長押しD&D（モバイル）
   const handleCardPointerDown = (task, e) => {
@@ -523,8 +524,8 @@ export default function TaskList({ currentUser }) {
                               >{t.done ? '✓' : '○'}</button>
                               <button
                                 className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
-                                onClick={() => isEditing ? cancelEdit() : startEdit(t)}
-                                title={isEditing ? '編集をキャンセル' : '編集'}
+                                onClick={() => isEditing ? closeEdit() : startEdit(t)}
+                                title={isEditing ? '編集を閉じる' : '編集'}
                               >✏️</button>
                               <button
                                 className={`kanban-card-btn kanban-card-sched ${schedMenuFor === t.id ? 'on' : ''}`}
@@ -551,14 +552,14 @@ export default function TaskList({ currentUser }) {
                                 value={editText}
                                 onChange={e => setEditText(e.target.value)}
                                 onKeyDown={e => {
-                                  if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
-                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEdit(t.id) }
+                                  if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                                    e.preventDefault(); closeEdit()
+                                  }
                                 }}
                                 autoFocus
                               />
                               <div className="kanban-card-edit-actions">
-                                <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
-                                <button className="btn btn-small" onClick={() => saveEdit(t.id)}>保存</button>
+                                <button className="btn btn-small btn-secondary" onClick={closeEdit}>閉じる</button>
                               </div>
                             </div>
                           ) : (

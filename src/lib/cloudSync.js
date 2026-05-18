@@ -31,6 +31,7 @@ const SYNC_EXCLUDE = new Set([
   'tf_workspace_id',      // ワークスペース設定自体
   'tf_client_id',         // ブラウザ固有
   'tf_cloud_enabled',     // ローカル設定
+  'tf_currentUser',       // 端末・ブラウザごとに独立（他デバイスのログインで切り替わらないように）
 ])
 
 export const SYNC_EVENT = 'tf-cloud-sync'

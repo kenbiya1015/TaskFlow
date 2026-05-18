@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import { useAutoSave } from '../hooks/useAutoSave'
 
 const PICK_HOURS = Array.from({ length: 19 }, (_, i) => i + 6)
 
@@ -53,18 +54,19 @@ export default function HandoffSection({ currentUser, onRestore }) {
     setEditName(b.recipient || '')
     setEditText(b.text || '')
   }
-  const cancelEdit = () => {
+  const closeEdit = () => {
     setEditingId(null)
     setEditName('')
     setEditText('')
   }
-  const saveEdit = (id) => {
-    const name = editName.trim()
-    const text = editText.trim()
+
+  useAutoSave({ id: editingId, name: editName, text: editText }, (val) => {
+    if (!val.id) return
+    const name = (val.name || '').trim()
+    const text = (val.text || '').trim()
     if (!name || !text) return
-    setBalls((balls || []).map(b => b.id === id ? { ...b, recipient: name, text } : b))
-    cancelEdit()
-  }
+    setBalls(prev => (prev || []).map(b => b.id === val.id ? { ...b, recipient: name, text } : b))
+  })
 
   const restore = (b) => {
     onRestore?.(b)
@@ -259,8 +261,7 @@ export default function HandoffSection({ currentUser, onRestore }) {
                       rows={2}
                     />
                     <div className="handoff-edit-actions">
-                      <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
-                      <button className="btn btn-small" onClick={() => saveEdit(b.id)}>保存</button>
+                      <button className="btn btn-small btn-secondary" onClick={closeEdit}>閉じる</button>
                     </div>
                   </div>
                 ) : (

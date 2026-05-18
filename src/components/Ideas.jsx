@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import { useAutoSave } from '../hooks/useAutoSave'
 
 const CATEGORIES = ['会社', '健美屋', '整体', '個人']
 const DEFAULT_CATEGORY = '個人'
@@ -39,17 +40,15 @@ export default function Ideas({ currentUser }) {
     setEditCategory(idea.category || DEFAULT_CATEGORY)
   }
 
-  const cancelEdit = () => {
+  const closeEdit = () => {
     setEditingId(null)
     setEditText('')
   }
 
-  const saveEdit = (id) => {
-    if (!editText.trim()) return
-    setIdeas(ideas.map(i => i.id === id ? { ...i, text: editText.trim(), category: editCategory } : i))
-    setEditingId(null)
-    setEditText('')
-  }
+  useAutoSave({ id: editingId, text: editText, category: editCategory }, (val) => {
+    if (!val.id || !val.text.trim()) return
+    setIdeas(prev => prev.map(i => i.id === val.id ? { ...i, text: val.text.trim(), category: val.category } : i))
+  })
 
   const sendToTasks = (idea, priority) => {
     const nextOrder = tasks.length === 0 ? 1 : Math.max(...tasks.map(t => t.order ?? 0)) + 1
@@ -137,8 +136,7 @@ export default function Ideas({ currentUser }) {
                               <select className="select" value={editCategory} onChange={e => setEditCategory(e.target.value)}>
                                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                               </select>
-                              <button className="btn btn-small" onClick={() => saveEdit(i.id)}>保存</button>
-                              <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
+                              <button className="btn btn-small btn-secondary" onClick={closeEdit}>閉じる</button>
                             </div>
                           </>
                         ) : (

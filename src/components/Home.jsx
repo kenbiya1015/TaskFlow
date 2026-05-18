@@ -1,5 +1,6 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
+import { useAutoSave } from '../hooks/useAutoSave'
 import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY, DEFAULT_OVERALL } from '../data/strategyDefaults'
 import { fetchEvents } from '../lib/googleCalendar'
@@ -372,7 +373,7 @@ export default function Home({ userName, onNavigate }) {
     document.addEventListener('pointercancel', onCancel)
   }
 
-  // タスクテキストの編集
+  // タスクテキストの編集（自動保存）
   const [editingTaskId, setEditingTaskId] = useState(null)
   const [editingTaskText, setEditingTaskText] = useState('')
   const startEditTask = (t) => {
@@ -380,17 +381,17 @@ export default function Home({ userName, onNavigate }) {
     setEditingTaskText(t.text)
     setTaskSchedMenuFor(null)
   }
-  const cancelEditTask = () => {
+  const closeEditTask = () => {
     setEditingTaskId(null)
     setEditingTaskText('')
   }
-  const saveEditTask = (id) => {
-    const txt = editingTaskText.trim()
-    if (!txt) { cancelEditTask(); return }
-    setTasks(tasks.map(t => t.id === id ? { ...t, text: txt } : t))
-    setEditingTaskId(null)
-    setEditingTaskText('')
-  }
+
+  useAutoSave({ id: editingTaskId, text: editingTaskText }, (val) => {
+    if (!val.id) return
+    const txt = (val.text || '').trim()
+    if (!txt) return
+    setTasks(prev => prev.map(t => t.id === val.id ? { ...t, text: txt } : t))
+  })
 
   // タスクカードからスケジュールへ追加（タスクID別にポップオーバー開閉）
   const [taskSchedMenuFor, setTaskSchedMenuFor] = useState(null)
@@ -909,8 +910,8 @@ export default function Home({ userName, onNavigate }) {
                               >{t.done ? '✓' : '○'}</button>
                               <button
                                 className={`kanban-card-btn kanban-card-edit ${isEditing ? 'on' : ''}`}
-                                onClick={() => isEditing ? cancelEditTask() : startEditTask(t)}
-                                title={isEditing ? '編集をキャンセル' : '編集'}
+                                onClick={() => isEditing ? closeEditTask() : startEditTask(t)}
+                                title={isEditing ? '編集を閉じる' : '編集'}
                               >✏️</button>
                               <button
                                 className={`kanban-card-btn kanban-card-sched ${taskSchedMenuFor === t.id ? 'on' : ''}`}
@@ -936,14 +937,14 @@ export default function Home({ userName, onNavigate }) {
                                 value={editingTaskText}
                                 onChange={e => setEditingTaskText(e.target.value)}
                                 onKeyDown={e => {
-                                  if (e.key === 'Escape') { e.preventDefault(); cancelEditTask() }
-                                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEditTask(t.id) }
+                                  if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                                    e.preventDefault(); closeEditTask()
+                                  }
                                 }}
                                 autoFocus
                               />
                               <div className="kanban-card-edit-actions">
-                                <button className="btn btn-small btn-secondary" onClick={cancelEditTask}>キャンセル</button>
-                                <button className="btn btn-small" onClick={() => saveEditTask(t.id)}>保存</button>
+                                <button className="btn btn-small btn-secondary" onClick={closeEditTask}>閉じる</button>
                               </div>
                             </div>
                           ) : (

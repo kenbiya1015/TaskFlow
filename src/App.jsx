@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import { useLocalStorage } from './hooks/useLocalStorage'
+import { AUTOSAVE_EVENT } from './hooks/useAutoSave'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
 import { initCloudSync } from './lib/cloudSync'
@@ -112,6 +113,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <SaveStatusIndicator />
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-title">heartrust</div>
@@ -230,6 +232,22 @@ export default function App() {
           <button className="btn btn-secondary" onClick={() => setCurrentUser('')}>ログアウト</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SaveStatusIndicator() {
+  const [state, setState] = useState('idle')
+  useEffect(() => {
+    const handler = (e) => setState(e.detail?.state || 'idle')
+    window.addEventListener(AUTOSAVE_EVENT, handler)
+    return () => window.removeEventListener(AUTOSAVE_EVENT, handler)
+  }, [])
+  if (state === 'idle') return null
+  return (
+    <div className={`save-status save-status-${state}`} aria-live="polite">
+      <span className="save-status-dot" aria-hidden />
+      {state === 'saving' ? '保存中…' : '保存しました'}
     </div>
   )
 }
