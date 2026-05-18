@@ -2,15 +2,22 @@ import { useState } from 'react'
 import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const CATEGORIES = ['会社', '健美屋', '整体', '個人']
-const FILTERS = ['全て', ...CATEGORIES]
 const DEFAULT_CATEGORY = '個人'
+
+// 2x2 配置（タスク一覧の4軸ボードに合わせる）
+// 左上=会社(A) / 右上=健美屋(C) / 左下=整体(B) / 右下=個人(D)
+const COLUMNS = [
+  { key: '会社',   col: 'A', sub: 'COMPANY' },
+  { key: '健美屋', col: 'C', sub: 'KENBIYA' },
+  { key: '整体',   col: 'B', sub: 'SEITAI' },
+  { key: '個人',   col: 'D', sub: 'PERSONAL' },
+]
 
 export default function Ideas({ currentUser }) {
   const [ideas, setIdeas] = useUserScopedStorage('tf_ideas_by_user', currentUser, [])
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [text, setText] = useState('')
   const [newCategory, setNewCategory] = useState(DEFAULT_CATEGORY)
-  const [filter, setFilter] = useState('全て')
   const [addedFlash, setAddedFlash] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editText, setEditText] = useState('')
@@ -24,7 +31,6 @@ export default function Ideas({ currentUser }) {
 
   const remove = id => setIdeas(ideas.filter(i => i.id !== id))
   const togglePin = id => setIdeas(ideas.map(i => i.id === id ? { ...i, pinned: !i.pinned } : i))
-  const setCategory = (id, category) => setIdeas(ideas.map(i => i.id === id ? { ...i, category } : i))
 
   const startEdit = (idea) => {
     setEditingId(idea.id)
@@ -63,8 +69,13 @@ export default function Ideas({ currentUser }) {
     setTimeout(() => setAddedFlash(null), 1500)
   }
 
-  const filtered = filter === '全て' ? ideas : ideas.filter(i => (i.category || DEFAULT_CATEGORY) === filter)
-  const sorted = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.createdAt - a.createdAt)
+  const ideasByCategory = CATEGORIES.reduce((acc, c) => {
+    const list = ideas
+      .filter(i => (i.category || DEFAULT_CATEGORY) === c)
+      .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.createdAt - a.createdAt)
+    acc[c] = list
+    return acc
+  }, {})
 
   return (
     <div>
@@ -91,80 +102,86 @@ export default function Ideas({ currentUser }) {
         </div>
       </div>
 
-      <div className="category-tabs">
-        {FILTERS.map(c => (
-          <button key={c} className={`category-tab ${filter === c ? 'active' : ''}`} onClick={() => setFilter(c)}>
-            {c}
-            {c !== '全て' && (
-              <span style={{ marginLeft: 6, opacity: 0.7 }}>
-                {ideas.filter(i => (i.category || DEFAULT_CATEGORY) === c).length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {sorted.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon">✦</div>
-          アイデアはまだありません。
-        </div>
-      ) : (
-        <div className="idea-grid">
-          {sorted.map(i => (
-            <div key={i.id} className={`idea-card ${i.pinned ? 'pinned' : ''}`}>
-              {editingId === i.id ? (
-                <>
-                  <textarea
-                    className="textarea"
-                    value={editText}
-                    onChange={e => setEditText(e.target.value)}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
-                    <select className="select" value={editCategory} onChange={e => setEditCategory(e.target.value)}>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <button className="btn btn-small" onClick={() => saveEdit(i.id)}>保存</button>
-                    <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="idea-text">{i.text}</div>
-                  <div className="idea-meta">
-                    <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <select
-                        className="select"
-                        value={i.category || DEFAULT_CATEGORY}
-                        onChange={e => setCategory(i.id, e.target.value)}
-                        style={{ padding: '2px 6px', fontSize: 11 }}
-                      >
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <span>{i.author}　{new Date(i.createdAt).toLocaleDateString('ja-JP')}</span>
-                    </span>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <button
-                        className="btn btn-small"
-                        onClick={() => sendToTasks(i)}
-                        title="このアイデアをタスクに追加"
-                      >
-                        {addedFlash === i.id ? '✓ 追加済' : '＋ タスクに追加'}
-                      </button>
-                      <button className="btn-icon" onClick={() => startEdit(i)} title="編集">✏</button>
-                      <button className="btn-icon" onClick={() => togglePin(i.id)} title={i.pinned ? '固定解除' : '固定'}>
-                        {i.pinned ? '★' : '☆'}
-                      </button>
-                      <button className="btn-icon" onClick={() => remove(i.id)} title="削除">×</button>
-                    </div>
-                  </div>
-                </>
-              )}
+      <div className="kanban-board kanban-board-2x2 kanban-board-full">
+        {COLUMNS.map(({ key, col, sub }) => {
+          const items = ideasByCategory[key] || []
+          return (
+            <div key={key} className={`kanban-column kanban-col-${col}`}>
+              <div className="kanban-col-header kanban-col-header-xl">
+                <span className={`priority-badge priority-${col} priority-badge-xl`}>{key.charAt(0)}</span>
+                <div className="kanban-col-titles">
+                  <span className="kanban-col-label-xl">{key}</span>
+                  <span className="kanban-col-sublabel">{sub}</span>
+                </div>
+                <span className="kanban-col-count-xl">{items.length}<span className="kanban-col-count-unit">件</span></span>
+              </div>
+              <div className="kanban-col-body">
+                {items.length === 0 ? (
+                  <div className="kanban-empty">アイデアがまだありません</div>
+                ) : (
+                  items.map(i => {
+                    const isEditing = editingId === i.id
+                    return (
+                      <div key={i.id} className={`kanban-card kanban-card-v2 ${i.pinned ? 'is-pinned' : ''}`}>
+                        {isEditing ? (
+                          <>
+                            <textarea
+                              className="textarea"
+                              value={editText}
+                              onChange={e => setEditText(e.target.value)}
+                              style={{ marginBottom: 6 }}
+                            />
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <select className="select" value={editCategory} onChange={e => setEditCategory(e.target.value)}>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                              <button className="btn btn-small" onClick={() => saveEdit(i.id)}>保存</button>
+                              <button className="btn btn-small btn-secondary" onClick={cancelEdit}>キャンセル</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="kanban-card-head">
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                {i.author}　{new Date(i.createdAt).toLocaleDateString('ja-JP')}
+                              </span>
+                              <div className="kanban-card-actions">
+                                <button
+                                  className="kanban-card-btn"
+                                  onClick={() => sendToTasks(i)}
+                                  title="このアイデアをタスクに追加"
+                                >{addedFlash === i.id ? '✓' : '＋'}</button>
+                                <button
+                                  className="kanban-card-btn"
+                                  onClick={() => togglePin(i.id)}
+                                  title={i.pinned ? '固定解除' : '固定'}
+                                >{i.pinned ? '★' : '☆'}</button>
+                                <button
+                                  className="kanban-card-btn kanban-card-edit"
+                                  onClick={() => startEdit(i)}
+                                  title="編集"
+                                >✏️</button>
+                                <button
+                                  className="kanban-card-btn kanban-card-del"
+                                  onClick={() => remove(i.id)}
+                                  title="削除"
+                                >🗑</button>
+                              </div>
+                            </div>
+                            <div className="kanban-card-text" style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.55 }}>
+                              {i.text}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          )
+        })}
+      </div>
     </div>
   )
 }
