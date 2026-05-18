@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useLocalStorage, uid } from '../hooks/useLocalStorage'
 import { useAutoSave } from '../hooks/useAutoSave'
+
+const EMPTY_PERSON = { description: '', items: [] }
 
 export default function BeingGoals({ currentUser }) {
   const [data, setData] = useLocalStorage('tf_being', {})
@@ -14,29 +16,68 @@ export default function BeingGoals({ currentUser }) {
   const touchDragRef = useRef({})
 
   const me = currentUser
-  const personData = data[me] || { description: '', items: [] }
+  const personData = (data && data[me]) || EMPTY_PERSON
   const items = personData.items || []
 
-  const writeItems = (nextItems) => {
-    setData({ ...data, [me]: { ...personData, items: nextItems } })
+  // 「理想像」のローカルドラフト：textarea を data から切り離して
+  // クラウド同期による上書きで入力中の文字が消えないようにする
+  const [descDraft, setDescDraft] = useState(personData.description || '')
+  // 「現在のユーザー」をローカルドラフトと一緒に保持し、
+  // 自動保存中にユーザーが切り替わっても別ユーザーへの書き込みを防ぐ
+  const [descUser, setDescUser] = useState(me)
+
+  // ログインユーザーが変わったらドラフトをそのユーザーの値へ再同期
+  useEffect(() => {
+    setDescDraft((data && data[me] && data[me].description) || '')
+    setDescUser(me)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me])
+
+  // 理想像：1秒debounceで現在ユーザーのスロットだけを更新（他ユーザーを上書きしない）
+  useAutoSave({ user: descUser, desc: descDraft }, (val) => {
+    if (!val.user) return
+    setData(prev => {
+      const safePrev = (prev && typeof prev === 'object') ? prev : {}
+      const p = safePrev[val.user] || EMPTY_PERSON
+      if ((p.description || '') === (val.desc || '')) return safePrev
+      return { ...safePrev, [val.user]: { ...p, description: val.desc || '' } }
+    })
+  })
+
+  // 現在ユーザーのスロットだけを functional update で書き換える
+  // （setData(prev => ...) なのでクラウド同期等で data が変わっていても安全）
+  const updatePerson = (user, mutate) => {
+    if (!user) return
+    setData(prev => {
+      const safePrev = (prev && typeof prev === 'object') ? prev : {}
+      const p = safePrev[user] || EMPTY_PERSON
+      const next = mutate(p)
+      if (next === p) return safePrev
+      return { ...safePrev, [user]: next }
+    })
   }
 
-  const updateDescription = v => {
-    setData({ ...data, [me]: { ...personData, description: v } })
+  const writeItemsForUser = (user, mutator) => {
+    updatePerson(user, p => ({ ...p, items: mutator(p.items || []) }))
   }
 
   const addItem = () => {
     const txt = newItem.trim()
     if (!txt) return
-    writeItems([...items, { id: uid(), text: txt, done: false }])
+    const user = me
+    writeItemsForUser(user, list => [...list, { id: uid(), text: txt, done: false }])
     setNewItem('')
   }
 
-  const toggleItem = id =>
-    writeItems(items.map(i => i.id === id ? { ...i, done: !i.done } : i))
+  const toggleItem = id => {
+    const user = me
+    writeItemsForUser(user, list => list.map(i => i.id === id ? { ...i, done: !i.done } : i))
+  }
 
-  const removeItem = id =>
-    writeItems(items.filter(i => i.id !== id))
+  const removeItem = id => {
+    const user = me
+    writeItemsForUser(user, list => list.filter(i => i.id !== id))
+  }
 
   const startEdit = (item) => {
     setEditingId(item.id)
@@ -47,26 +88,27 @@ export default function BeingGoals({ currentUser }) {
     setEditingText('')
   }
 
-  useAutoSave({ id: editingId, text: editingText }, (val) => {
-    if (!val.id) return
+  // 実践項目の編集：ユーザーIDを値に含めて、編集中にログインユーザーが
+  // 切り替わっても元ユーザーの項目だけを更新する
+  useAutoSave({ user: me, id: editingId, text: editingText }, (val) => {
+    if (!val.id || !val.user) return
     const txt = (val.text || '').trim()
     if (!txt) return
-    setData(prev => {
-      const p = prev[me] || { description: '', items: [] }
-      const list = (p.items || []).map(i => i.id === val.id ? { ...i, text: txt } : i)
-      return { ...prev, [me]: { ...p, items: list } }
-    })
+    writeItemsForUser(val.user, list => list.map(i => i.id === val.id ? { ...i, text: txt } : i))
   })
 
   const reorder = (fromId, toId) => {
     if (!fromId || fromId === toId) return
-    const fromIdx = items.findIndex(i => i.id === fromId)
-    const toIdx = items.findIndex(i => i.id === toId)
-    if (fromIdx < 0 || toIdx < 0) return
-    const next = [...items]
-    const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
-    writeItems(next)
+    const user = me
+    writeItemsForUser(user, list => {
+      const fromIdx = list.findIndex(i => i.id === fromId)
+      const toIdx = list.findIndex(i => i.id === toId)
+      if (fromIdx < 0 || toIdx < 0) return list
+      const next = [...list]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      return next
+    })
   }
 
   // タッチ用ロングプレスD&D
@@ -144,8 +186,8 @@ export default function BeingGoals({ currentUser }) {
           className="textarea"
           style={{ marginLeft: 16, width: 'calc(100% - 16px)', minHeight: 140, fontSize: 15, lineHeight: 1.85 }}
           placeholder="どんな自分になりたいか、ありたい姿、心の在り方..."
-          value={personData.description}
-          onChange={e => updateDescription(e.target.value)}
+          value={descDraft}
+          onChange={e => setDescDraft(e.target.value)}
         />
       </div>
 
