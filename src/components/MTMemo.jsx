@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
+const PRIORITIES = ['A', 'B', 'C', 'D']
 
 const NO_PARTNER = '__none__'
 
@@ -92,14 +93,14 @@ export default function MTMemo({ currentUser }) {
   const updateMemoPartner = (id, pid) =>
     setMemos(memos.map(m => m.id === id ? { ...m, partnerId: pid === NO_PARTNER ? null : pid } : m))
 
-  const distributeToTask = (memo, category) => {
+  const distributeToTask = (memo, category, priority) => {
     setTasks([
       {
         id: uid(),
         text: memo.title,
         category,
         member: currentUser,
-        priority: 'B',
+        priority,
         due: '',
         done: false,
         createdAt: Date.now(),
@@ -108,7 +109,7 @@ export default function MTMemo({ currentUser }) {
       },
       ...tasks,
     ])
-    alert(`「${memo.title}」をタスクに振り分けました（${category}）`)
+    setMemos(memos.map(x => x.id === memo.id ? { ...x, addedToTask: priority } : x))
   }
 
   const distributeToIdea = memo => {
@@ -223,7 +224,7 @@ export default function MTMemo({ currentUser }) {
                 partners={partners}
                 onRemove={() => removeMemo(m.id)}
                 onChangePartner={pid => updateMemoPartner(m.id, pid)}
-                onTask={c => distributeToTask(m, c)}
+                onTask={(c, p) => distributeToTask(m, c, p)}
                 onIdea={() => distributeToIdea(m)}
               />
             ))
@@ -353,6 +354,12 @@ function DistributeMemo({ memo, partner, partners, onRemove, onChangePartner, on
             <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 10 }}>
               {new Date(memo.createdAt).toLocaleString('ja-JP')}
             </span>
+            {memo.addedToTask && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 10, padding: '2px 8px', background: 'var(--surface-2)', borderRadius: 999, border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-soft)' }}>タスク追加済み</span>
+                <span className={`priority-badge priority-${memo.addedToTask}`} style={{ minWidth: 20, height: 18, fontSize: 10, padding: '0 5px' }}>{memo.addedToTask}</span>
+              </span>
+            )}
           </div>
           <div style={{ marginTop: 4 }}>
             {partner ? (
@@ -384,7 +391,18 @@ function DistributeMemo({ memo, partner, partners, onRemove, onChangePartner, on
           <select className="select" value={cat} onChange={e => setCat(e.target.value)}>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
-          <button className="btn btn-small" onClick={() => onTask(cat)}>→ タスクへ</button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>軸：</span>
+            {PRIORITIES.map(p => (
+              <button
+                key={p}
+                className={`priority-badge priority-${p}`}
+                style={{ minWidth: 30, height: 26, borderRadius: 6, fontSize: 12 }}
+                onClick={() => onTask(cat, p)}
+                title={`優先度 ${p} でタスクに追加`}
+              >{p}</button>
+            ))}
+          </span>
           <button className="btn btn-small btn-secondary" onClick={onIdea}>→ アイデアへ</button>
         </div>
       )}

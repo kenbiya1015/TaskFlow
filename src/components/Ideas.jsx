@@ -3,6 +3,7 @@ import { useUserScopedStorage, uid } from '../hooks/useLocalStorage'
 
 const CATEGORIES = ['会社', '健美屋', '整体', '個人']
 const DEFAULT_CATEGORY = '個人'
+const PRIORITIES = ['A', 'B', 'C', 'D']
 
 // 2x2 配置（タスク一覧の4軸ボードに合わせる）
 // 左上=会社(A) / 右上=健美屋(C) / 左下=整体(B) / 右下=個人(D)
@@ -18,10 +19,10 @@ export default function Ideas({ currentUser }) {
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [text, setText] = useState('')
   const [newCategory, setNewCategory] = useState(DEFAULT_CATEGORY)
-  const [addedFlash, setAddedFlash] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editText, setEditText] = useState('')
   const [editCategory, setEditCategory] = useState(DEFAULT_CATEGORY)
+  const [pickPriorityFor, setPickPriorityFor] = useState(null)
 
   const add = () => {
     if (!text.trim()) return
@@ -50,14 +51,14 @@ export default function Ideas({ currentUser }) {
     setEditText('')
   }
 
-  const sendToTasks = (idea) => {
+  const sendToTasks = (idea, priority) => {
     const nextOrder = tasks.length === 0 ? 1 : Math.max(...tasks.map(t => t.order ?? 0)) + 1
     const newTask = {
       id: uid(),
       text: idea.text,
       category: 'その他',
       member: currentUser,
-      priority: 'B',
+      priority,
       due: '',
       done: false,
       createdAt: Date.now(),
@@ -65,8 +66,8 @@ export default function Ideas({ currentUser }) {
       fromIdeaId: idea.id,
     }
     setTasks([newTask, ...tasks])
-    setAddedFlash(idea.id)
-    setTimeout(() => setAddedFlash(null), 1500)
+    setIdeas(ideas.map(x => x.id === idea.id ? { ...x, addedToTask: priority } : x))
+    setPickPriorityFor(null)
   }
 
   const ideasByCategory = CATEGORIES.reduce((acc, c) => {
@@ -121,6 +122,7 @@ export default function Ideas({ currentUser }) {
                 ) : (
                   items.map(i => {
                     const isEditing = editingId === i.id
+                    const isPicking = pickPriorityFor === i.id
                     return (
                       <div key={i.id} className={`kanban-card kanban-card-v2 ${i.pinned ? 'is-pinned' : ''}`}>
                         {isEditing ? (
@@ -142,30 +144,57 @@ export default function Ideas({ currentUser }) {
                         ) : (
                           <>
                             <div className="kanban-card-head">
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                {i.author}　{new Date(i.createdAt).toLocaleDateString('ja-JP')}
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span>{i.author}　{new Date(i.createdAt).toLocaleDateString('ja-JP')}</span>
+                                {i.addedToTask && (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px', background: 'var(--surface-2)', borderRadius: 999, border: '1px solid var(--border)' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-soft)' }}>タスク追加済み</span>
+                                    <span className={`priority-badge priority-${i.addedToTask}`} style={{ minWidth: 20, height: 18, fontSize: 10, padding: '0 5px' }}>{i.addedToTask}</span>
+                                  </span>
+                                )}
                               </span>
                               <div className="kanban-card-actions">
-                                <button
-                                  className="kanban-card-btn"
-                                  onClick={() => sendToTasks(i)}
-                                  title="このアイデアをタスクに追加"
-                                >{addedFlash === i.id ? '✓' : '＋'}</button>
-                                <button
-                                  className="kanban-card-btn"
-                                  onClick={() => togglePin(i.id)}
-                                  title={i.pinned ? '固定解除' : '固定'}
-                                >{i.pinned ? '★' : '☆'}</button>
-                                <button
-                                  className="kanban-card-btn kanban-card-edit"
-                                  onClick={() => startEdit(i)}
-                                  title="編集"
-                                >✏️</button>
-                                <button
-                                  className="kanban-card-btn kanban-card-del"
-                                  onClick={() => remove(i.id)}
-                                  title="削除"
-                                >🗑</button>
+                                {isPicking ? (
+                                  <>
+                                    {PRIORITIES.map(p => (
+                                      <button
+                                        key={p}
+                                        className={`priority-badge priority-${p}`}
+                                        style={{ minWidth: 26, height: 26, borderRadius: 6, fontSize: 12 }}
+                                        onClick={() => sendToTasks(i, p)}
+                                        title={`優先度 ${p} でタスクに追加`}
+                                      >{p}</button>
+                                    ))}
+                                    <button
+                                      className="kanban-card-btn"
+                                      onClick={() => setPickPriorityFor(null)}
+                                      title="キャンセル"
+                                    >×</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="kanban-card-btn"
+                                      onClick={() => setPickPriorityFor(i.id)}
+                                      title="このアイデアをタスクに追加"
+                                    >＋</button>
+                                    <button
+                                      className="kanban-card-btn"
+                                      onClick={() => togglePin(i.id)}
+                                      title={i.pinned ? '固定解除' : '固定'}
+                                    >{i.pinned ? '★' : '☆'}</button>
+                                    <button
+                                      className="kanban-card-btn kanban-card-edit"
+                                      onClick={() => startEdit(i)}
+                                      title="編集"
+                                    >✏️</button>
+                                    <button
+                                      className="kanban-card-btn kanban-card-del"
+                                      onClick={() => remove(i.id)}
+                                      title="削除"
+                                    >🗑</button>
+                                  </>
+                                )}
                               </div>
                             </div>
                             <div className="kanban-card-text" style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.55 }}>
