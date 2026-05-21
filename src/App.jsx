@@ -5,6 +5,7 @@ import { AUTOSAVE_EVENT } from './hooks/useAutoSave'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
 import { initCloudSync } from './lib/cloudSync'
+import { consumeOAuthCallback } from './lib/googleCalendar'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -48,6 +49,51 @@ export default function App() {
   const unreadCount = (messages || []).filter(m => m.to === currentUser && !m.readAt).length
   const [page, setPage] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [oauthNotice, setOauthNotice] = useState('')
+
+  // Google OAuth リダイレクトからの戻り着地。/auth/callback のフラグメントに access_token がある。
+  // ・該当ユーザーのトークンを tf_gcal_user_tokens に保存
+  // ・currentUser を認証時のユーザーに切り替え
+  // ・URL を元に戻し、戻り先ページ（既定: schedule）へ遷移
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (window.location.pathname !== '/auth/callback') return
+
+    const result = consumeOAuthCallback()
+    // URL を綺麗にする（hash と pathname を root に戻す）
+    try {
+      window.history.replaceState({}, '', '/')
+    } catch {}
+
+    if (!result) return
+
+    if (result.error) {
+      setOauthNotice(`Google カレンダー連携に失敗しました：${result.error}`)
+      if (result.returnTo) setPage(result.returnTo)
+      return
+    }
+
+    if (result.user && result.token) {
+      try {
+        const raw = window.localStorage.getItem('tf_gcal_user_tokens')
+        const all = raw ? JSON.parse(raw) : {}
+        all[result.user] = result.token
+        window.localStorage.setItem('tf_gcal_user_tokens', JSON.stringify(all))
+      } catch {}
+      // 認証したユーザーに切り替え（既に同じならノーオペ）
+      setCurrentUser(result.user)
+      setPage(result.returnTo || 'schedule')
+      setOauthNotice(`${result.user} さんの Google カレンダーと連携しました。`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // OAuth 通知は数秒で消す
+  useEffect(() => {
+    if (!oauthNotice) return
+    const t = setTimeout(() => setOauthNotice(''), 5000)
+    return () => clearTimeout(t)
+  }, [oauthNotice])
 
   // ページ遷移時にドロワーを自動で閉じる
   useEffect(() => { setDrawerOpen(false) }, [page])
@@ -114,6 +160,16 @@ export default function App() {
   return (
     <div className="app">
       <SaveStatusIndicator />
+      {oauthNotice && (
+        <div
+          className="save-status save-status-saved"
+          role="status"
+          aria-live="polite"
+          style={{ background: oauthNotice.includes('失敗') ? 'var(--danger)' : 'var(--success)', color: '#fff' }}
+        >
+          {oauthNotice}
+        </div>
+      )}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-title">heartrust</div>

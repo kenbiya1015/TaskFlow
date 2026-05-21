@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
-import { requestAccessToken, fetchEvents, revokeToken } from '../lib/googleCalendar'
+import { startOAuthRedirect, fetchEvents, revokeToken, getRedirectUri } from '../lib/googleCalendar'
 import { GCAL_CLIENT_ID } from '../config'
 
 function normalizePriority(p) {
@@ -111,22 +111,23 @@ export default function TodaySchedule({ currentUser }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayKey, tomorrowKey, currentUser])
 
-  const connect = async () => {
+  const connect = () => {
     if (!clientId) {
       setGcalError('クライアント ID が設定されていません')
       setShowConfig(true)
       return
     }
-    setBusy(true); setGcalError(''); setGcalInfo('')
+    if (!currentUser) {
+      setGcalError('ユーザーが選択されていません')
+      return
+    }
+    setGcalError(''); setGcalInfo('')
     try {
-      const t = await requestAccessToken(clientId)
-      setToken(t)
-      await syncWithToken(t.access_token)
-      setGcalInfo(`${currentUser} さんの Google カレンダーと連携しました。`)
+      // ポップアップは使わず、現在のタブを Google の同意画面へリダイレクト。
+      // 完了後は /auth/callback に戻り、App.jsx の useEffect でトークンを受け取る。
+      startOAuthRedirect(clientId, currentUser, 'schedule')
     } catch (e) {
       setGcalError(e.message || String(e))
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -199,7 +200,12 @@ export default function TodaySchedule({ currentUser }) {
               <button className="btn btn-small btn-secondary" onClick={disconnect}>連携解除</button>
             </>
           ) : (
-            <button className="btn btn-small" onClick={connect} disabled={busy}>
+            <button
+              className="btn btn-small"
+              onClick={connect}
+              disabled={busy}
+              title="Google の認証ページへ移動します"
+            >
               {busy ? '接続中...' : '📅 Googleカレンダー連携'}
             </button>
           )}
@@ -217,8 +223,12 @@ export default function TodaySchedule({ currentUser }) {
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
             クライアント ID は本アプリに既定値が組み込まれています。<br />
             別の OAuth クライアントを使う場合のみ下に上書き値を入力してください。<br />
-            Google Cloud Console の「承認済みの JavaScript 生成元」に <code>{location.origin}</code> を登録しておく必要があります。<br />
-            必要 API: <strong>Google Calendar API</strong> ／ スコープ: <code>calendar.readonly</code>
+            Google Cloud Console で以下を登録しておく必要があります：<br />
+            ・「承認済みの JavaScript 生成元」: <code>{location.origin}</code><br />
+            ・「承認済みのリダイレクト URI」: <code>{getRedirectUri()}</code><br />
+            必要 API: <strong>Google Calendar API</strong> ／ スコープ: <code>calendar.readonly</code><br />
+            連携ボタンを押すと Google の同意画面へリダイレクトします（ポップアップは使いません）。
+            各ユーザーごとに別々の Google アカウントと連携できます。
           </div>
           <div className="form-row">
             <input
