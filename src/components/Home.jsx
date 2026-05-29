@@ -3,7 +3,8 @@ import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalSto
 import { useAutoSave } from '../hooks/useAutoSave'
 import { findMember } from '../members'
 import { DAILY_ROUTINE, ROADMAP, CURRENT_PHASE_KEY, DEFAULT_OVERALL } from '../data/strategyDefaults'
-import { fetchEvents } from '../lib/googleCalendar'
+import { fetchEvents, ensureValidToken, tokenIsValid } from '../lib/googleCalendar'
+import { GCAL_CLIENT_ID } from '../config'
 import HandoffSection from './HandoffSection'
 import DueEdit from './DueEdit'
 import { ACCOUNT_MAP as SNS_ACCOUNT_MAP } from './SNS'
@@ -89,6 +90,8 @@ export default function Home({ userName, onNavigate }) {
   const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
   const [messages] = useLocalStorage('tf_messages', [])
+  const [clientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
+  const gcalClientId = (clientIdOverride || '').trim() || GCAL_CLIENT_ID
 
   const member = findMember(userName)
 
@@ -134,19 +137,26 @@ export default function Home({ userName, onNavigate }) {
   const today = todayKey()
 
   const myToken = allTokens[userName] || null
-  const tokenValid = myToken && myToken.access_token && myToken.expires_at > Date.now()
+  const tokenValid = tokenIsValid(myToken)
   const myEvents = allEvents[userName] || {}
   const [gcalBusy, setGcalBusy] = useState(false)
 
-  // 有効なトークンがあれば、今日と明日のGCalを自動同期
+  // トークンがあれば（期限切れでも）GCal 自動同期。
+  // ensureValidToken が必要に応じて silent refresh を試みる。
   useEffect(() => {
     let cancelled = false
-    if (!tokenValid) return
+    if (!myToken || !myToken.access_token) return
     setGcalBusy(true)
-    const from = new Date(); from.setHours(0, 0, 0, 0)
-    const to = new Date(from); to.setDate(to.getDate() + 3)
-    fetchEvents(myToken.access_token, from, to)
-      .then(items => {
+    ;(async () => {
+      try {
+        const result = await ensureValidToken(gcalClientId, userName, allTokens)
+        if (cancelled) return
+        if (result.tokens !== allTokens) setAllTokens(result.tokens)
+        const usable = result.token
+        if (!usable || !usable.access_token) return
+        const from = new Date(); from.setHours(0, 0, 0, 0)
+        const to = new Date(from); to.setDate(to.getDate() + 3)
+        const items = await fetchEvents(usable.access_token, from, to)
         if (cancelled) return
         const grouped = {}
         items.forEach(ev => {
@@ -166,19 +176,15 @@ export default function Home({ userName, onNavigate }) {
           userEvents.__syncedAt = Date.now()
           return { ...prev, [userName]: userEvents }
         })
-      })
-      .catch(() => {
-        if (cancelled) return
-        setAllTokens(prev => {
-          const next = { ...prev }
-          delete next[userName]
-          return next
-        })
-      })
-      .finally(() => { if (!cancelled) setGcalBusy(false) })
+      } catch {
+        // トークンは消さず維持（次回のスケジューラ/手動再連携で復旧）
+      } finally {
+        if (!cancelled) setGcalBusy(false)
+      }
+    })()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userName])
+  }, [userName, myToken?.access_token, myToken?.expires_at])
 
   // タスクをA/B/C/Dにグループ分け（未完了のみ）
   // 並び順は order を優先（ドラッグ&ドロップで変更可）、同値なら期日が早い順

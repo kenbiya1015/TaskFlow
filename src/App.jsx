@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { AUTOSAVE_EVENT } from './hooks/useAutoSave'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
 import { initCloudSync, STATUS_EVENT, forceFlush, getSyncStatus } from './lib/cloudSync'
-import { consumeOAuthCallback } from './lib/googleCalendar'
+import {
+  consumeOAuthCallback,
+  fetchGoogleEmail,
+  startGcalAutoRefresh,
+  stopGcalAutoRefresh,
+  TOKEN_REFRESH_NOTICE_EVENT,
+} from './lib/googleCalendar'
+import { GCAL_CLIENT_ID } from './config'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -46,10 +53,21 @@ const PRIMARY_TAB_IDS = PRIMARY_TABS.map(t => t.id)
 export default function App() {
   const [currentUser, setCurrentUser] = useLocalStorage('tf_currentUser', '')
   const [messages] = useLocalStorage('tf_messages', [])
+  const [allGcalTokens, setAllGcalTokens] = useLocalStorage('tf_gcal_user_tokens', {})
+  const [clientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
   const unreadCount = (messages || []).filter(m => m.to === currentUser && !m.readAt).length
   const [page, setPage] = useState('home')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [oauthNotice, setOauthNotice] = useState('')
+  const [gcalReconnectNotice, setGcalReconnectNotice] = useState('')
+
+  // 最新値を参照するための ref（useEffect のクロージャ問題回避）
+  const allGcalTokensRef = useRef(allGcalTokens)
+  allGcalTokensRef.current = allGcalTokens
+  const clientIdRef = useRef(clientIdOverride)
+  clientIdRef.current = clientIdOverride
+  const currentUserRef = useRef(currentUser)
+  currentUserRef.current = currentUser
 
   // Google OAuth リダイレクトからの戻り着地。/auth/callback のフラグメントに access_token がある。
   // ・該当ユーザーのトークンを tf_gcal_user_tokens に保存
@@ -74,12 +92,16 @@ export default function App() {
     }
 
     if (result.user && result.token) {
-      try {
-        const raw = window.localStorage.getItem('tf_gcal_user_tokens')
-        const all = raw ? JSON.parse(raw) : {}
-        all[result.user] = result.token
-        window.localStorage.setItem('tf_gcal_user_tokens', JSON.stringify(all))
-      } catch {}
+      // まずはトークンを即保存（React 経由 → useLocalStorage → queuePush → Supabase）
+      setAllGcalTokens(prev => ({ ...(prev || {}), [result.user]: result.token }))
+      // 次に email を取得して hint 用に上書き保存
+      fetchGoogleEmail(result.token.access_token).then(email => {
+        if (!email) return
+        setAllGcalTokens(prev => {
+          const cur = (prev && prev[result.user]) || result.token
+          return { ...(prev || {}), [result.user]: { ...cur, email } }
+        })
+      })
       // 認証したユーザーに切り替え（既に同じならノーオペ）
       setCurrentUser(result.user)
       setPage(result.returnTo || 'schedule')
@@ -112,8 +134,39 @@ export default function App() {
     // 2. 起動時のスナップショットを履歴に保存（最大5世代、1時間以内は重複保存しない）
     autoBackup()
     // 3. クラウド同期を開始（Supabaseから最新取得 → Realtime購読）
-    initCloudSync().catch(e => console.warn('[App] cloud sync init failed', e))
+    initCloudSync()
+      .catch(e => console.warn('[App] cloud sync init failed', e))
+      .finally(() => {
+        // 4. クラウド同期で復元したトークンを使って GCal の自動更新を開始
+        startGcalAutoRefresh({
+          getClientId: () => (clientIdRef.current || '').trim() || GCAL_CLIENT_ID,
+          getUser: () => currentUserRef.current,
+          getAllTokens: () => allGcalTokensRef.current,
+          setAllTokens: setAllGcalTokens,
+        })
+      })
+    return () => stopGcalAutoRefresh()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // サイレント更新失敗 → ユーザーに再連携を促す
+  useEffect(() => {
+    const handler = (e) => {
+      const user = e.detail?.user || ''
+      if (!user) return
+      // 別ユーザーの更新失敗通知は無視（誤通知を防ぐ）
+      if (user !== currentUserRef.current) return
+      setGcalReconnectNotice(`${user} さんの Google カレンダー連携が切れました。スケジュール画面で再連携してください。`)
+    }
+    window.addEventListener(TOKEN_REFRESH_NOTICE_EVENT, handler)
+    return () => window.removeEventListener(TOKEN_REFRESH_NOTICE_EVENT, handler)
+  }, [])
+
+  useEffect(() => {
+    if (!gcalReconnectNotice) return
+    const t = setTimeout(() => setGcalReconnectNotice(''), 8000)
+    return () => clearTimeout(t)
+  }, [gcalReconnectNotice])
 
   useEffect(() => {
     if (!currentUser) return
@@ -168,6 +221,18 @@ export default function App() {
           style={{ background: oauthNotice.includes('失敗') ? 'var(--danger)' : 'var(--success)', color: '#fff' }}
         >
           {oauthNotice}
+        </div>
+      )}
+      {gcalReconnectNotice && (
+        <div
+          className="save-status save-status-failed"
+          role="status"
+          aria-live="polite"
+          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+          onClick={() => { setPage('schedule'); setGcalReconnectNotice('') }}
+          title="クリックでスケジュール画面へ"
+        >
+          {gcalReconnectNotice}
         </div>
       )}
       <aside className="sidebar">

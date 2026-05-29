@@ -138,3 +138,261 @@ export function revokeToken(accessToken) {
     }).catch(() => {})
   } catch {}
 }
+
+// ──────────────────────────────────────────────
+// Google Identity Services（GIS）による「サイレント更新」レイヤ
+// ──────────────────────────────────────────────
+// 制約：SPA からは Google の refresh_token を取得できない（client_secret が必要）。
+// 代替として GIS Token Client の prompt:'' を使うと、ブラウザの Google セッションが
+// 生きている限り、隠し iframe 経由で UI なしに新しい access_token が取れる。
+// = 実質「リフレッシュトークンの代わり」。Google セッションが切れた場合のみ再ログインを要求。
+
+export const TOKEN_STORE_KEY = 'tf_gcal_user_tokens'
+export const TOKEN_REFRESH_NOTICE_EVENT = 'tf-gcal-reconnect-needed'
+export const TOKEN_REFRESH_OK_EVENT = 'tf-gcal-token-refreshed'
+
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000   // 期限 5 分前にプリフライト
+const TOKEN_RETRY_THROTTLE_MS = 30 * 1000        // 失敗連発防止
+
+let _gsiPromise = null
+function loadGsiScript() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('no window'))
+  if (_gsiPromise) return _gsiPromise
+  _gsiPromise = new Promise((resolve, reject) => {
+    if (window.google?.accounts?.oauth2) return resolve()
+    const s = document.createElement('script')
+    s.src = 'https://accounts.google.com/gsi/client'
+    s.async = true
+    s.defer = true
+    s.onload = () => {
+      if (window.google?.accounts?.oauth2) resolve()
+      else reject(new Error('GIS script loaded but oauth2 missing'))
+    }
+    s.onerror = () => reject(new Error('GIS script load failed'))
+    document.head.appendChild(s)
+  })
+  return _gsiPromise
+}
+
+// Token Client は client_id 単位でキャッシュ
+const _tokenClients = new Map()
+
+/**
+ * サイレントにアクセストークンを再取得する。
+ * - Google セッションが有効＆過去にこの client_id で承認済みなら、UI なしで token を返す。
+ * - 失敗（同意未取得・セッション切れ等）なら null を返す。
+ * @param {string} clientId
+ * @param {string} [emailHint]  対象 Google アカウントの email（過去に取得済みなら指定）
+ */
+export async function requestTokenSilent(clientId, emailHint) {
+  if (!clientId) return null
+  try {
+    await loadGsiScript()
+  } catch {
+    return null
+  }
+  return new Promise(resolve => {
+    let settled = false
+    const finish = (val) => { if (!settled) { settled = true; resolve(val) } }
+    const callback = (resp) => {
+      if (resp?.error) return finish(null)
+      if (!resp?.access_token) return finish(null)
+      finish({
+        access_token: resp.access_token,
+        expires_at: Date.now() + (Number(resp.expires_in) || 3600) * 1000,
+        scope: resp.scope || SCOPE,
+      })
+    }
+    let client = _tokenClients.get(clientId)
+    if (!client) {
+      client = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: SCOPE,
+        prompt: '',
+        callback,
+        error_callback: () => finish(null),
+      })
+      _tokenClients.set(clientId, client)
+    }
+    client.callback = callback
+    try {
+      client.requestAccessToken({ prompt: '', hint: emailHint || undefined })
+    } catch {
+      finish(null)
+    }
+    // 念のためタイムアウト（10秒）
+    setTimeout(() => finish(null), 10000)
+  })
+}
+
+/**
+ * 新しく取れた access_token から Google アカウントの email を取得して保存する。
+ * これを次回以降の silent refresh に `hint` として渡すことで、
+ * 同一ブラウザに複数 Google アカウントがある場合でも正しいアカウントで更新できる。
+ */
+export async function fetchGoogleEmail(accessToken) {
+  if (!accessToken) return null
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return (data && data.email) || null
+  } catch {
+    return null
+  }
+}
+
+export function tokenIsValid(token, marginMs = 0) {
+  if (!token || !token.access_token) return false
+  if (typeof token.expires_at !== 'number') return false
+  return token.expires_at - marginMs > Date.now()
+}
+
+export function tokenIsExpiringSoon(token, marginMs = TOKEN_REFRESH_MARGIN_MS) {
+  if (!token || !token.access_token) return true
+  if (typeof token.expires_at !== 'number') return true
+  return token.expires_at - marginMs <= Date.now()
+}
+
+function notifyReconnectNeeded(user) {
+  try {
+    window.dispatchEvent(new CustomEvent(TOKEN_REFRESH_NOTICE_EVENT, { detail: { user } }))
+  } catch {}
+}
+function notifyRefreshed(user) {
+  try {
+    window.dispatchEvent(new CustomEvent(TOKEN_REFRESH_OK_EVENT, { detail: { user } }))
+  } catch {}
+}
+
+// 同時並行の refresh を抑止
+const _inflight = new Map() // user -> Promise
+
+/**
+ * 指定ユーザーの GCal トークンを「有効な状態」に保証する。
+ * - 期限内なら現トークンを返す
+ * - 期限切れ間近なら silent refresh を試みる
+ * - silent 失敗時は null + TOKEN_REFRESH_NOTICE_EVENT を発火
+ *
+ * tokens はそのままミューテートせず、新しいオブジェクトを返す。
+ * @returns {Promise<{token: object|null, tokens: object, refreshed: boolean}>}
+ */
+export async function ensureValidToken(clientId, user, tokens) {
+  const safeTokens = (tokens && typeof tokens === 'object') ? tokens : {}
+  if (!user) return { token: null, tokens: safeTokens, refreshed: false }
+  const existing = safeTokens[user] || null
+  if (tokenIsValid(existing, TOKEN_REFRESH_MARGIN_MS)) {
+    return { token: existing, tokens: safeTokens, refreshed: false }
+  }
+  // 失敗直後のクールダウン中はサイレント再試行しない（フリッカ防止）
+  const lastFail = existing?.lastSilentFailAt
+  if (lastFail && Date.now() - lastFail < TOKEN_RETRY_THROTTLE_MS) {
+    notifyReconnectNeeded(user)
+    return { token: existing && existing.access_token ? existing : null, tokens: safeTokens, refreshed: false }
+  }
+  if (_inflight.has(user)) {
+    const t = await _inflight.get(user)
+    return { token: t || null, tokens: safeTokens, refreshed: !!t }
+  }
+  const p = (async () => {
+    const fresh = await requestTokenSilent(clientId, existing?.email)
+    if (!fresh) return null
+    // 初回かつ email 未取得なら、ここで email も取り直して保存（次回の hint 用）
+    let email = existing?.email || null
+    if (!email) {
+      email = await fetchGoogleEmail(fresh.access_token)
+    }
+    fresh.email = email || undefined
+    return fresh
+  })()
+  _inflight.set(user, p)
+  let fresh = null
+  try {
+    fresh = await p
+  } finally {
+    _inflight.delete(user)
+  }
+
+  if (fresh) {
+    const nextTokens = { ...safeTokens, [user]: fresh }
+    notifyRefreshed(user)
+    return { token: fresh, tokens: nextTokens, refreshed: true }
+  } else {
+    // 失敗を記録（既存トークンが有効なら維持しつつ lastSilentFailAt を付ける）
+    const failed = { ...(existing || {}), lastSilentFailAt: Date.now() }
+    const nextTokens = existing ? { ...safeTokens, [user]: failed } : safeTokens
+    notifyReconnectNeeded(user)
+    return {
+      token: tokenIsValid(existing) ? existing : null,
+      tokens: nextTokens,
+      refreshed: false,
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+// 自動更新スケジューラ：期限の 5 分前 / タブ復帰 / 起動時に silent refresh
+// ──────────────────────────────────────────────
+let _schedulerHandle = null
+let _schedulerCtx = null
+
+/**
+ * @param {object} opts
+ * @param {() => string} opts.getClientId
+ * @param {() => string} opts.getUser
+ * @param {() => object} opts.getAllTokens
+ * @param {(next: object) => void} opts.setAllTokens
+ */
+export function startGcalAutoRefresh(opts) {
+  stopGcalAutoRefresh()
+  _schedulerCtx = opts
+  const tick = async () => {
+    if (!_schedulerCtx) return
+    const { getClientId, getUser, getAllTokens, setAllTokens } = _schedulerCtx
+    const clientId = (getClientId?.() || '').trim()
+    const user = getUser?.()
+    const tokens = getAllTokens?.() || {}
+    if (!clientId || !user) return scheduleNext(60 * 1000)
+    const result = await ensureValidToken(clientId, user, tokens)
+    if (result.tokens !== tokens) setAllTokens(result.tokens)
+    const newToken = result.tokens[user]
+    if (newToken?.expires_at) {
+      const wait = Math.max(60 * 1000, newToken.expires_at - Date.now() - TOKEN_REFRESH_MARGIN_MS)
+      scheduleNext(wait)
+    } else {
+      scheduleNext(60 * 1000)
+    }
+  }
+  const scheduleNext = (ms) => {
+    if (_schedulerHandle) clearTimeout(_schedulerHandle)
+    _schedulerHandle = setTimeout(tick, ms)
+  }
+
+  // ① 起動時すぐ実行
+  tick()
+  // ② タブが見えるようになったら再チェック（モバイル復帰想定）
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') tick()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  // ③ ネット復帰でも
+  const onOnline = () => tick()
+  window.addEventListener('online', onOnline)
+
+  // 解除関数を保持
+  _schedulerCtx._cleanup = () => {
+    document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener('online', onOnline)
+  }
+}
+
+export function stopGcalAutoRefresh() {
+  if (_schedulerHandle) clearTimeout(_schedulerHandle)
+  _schedulerHandle = null
+  if (_schedulerCtx?._cleanup) {
+    try { _schedulerCtx._cleanup() } catch {}
+  }
+  _schedulerCtx = null
+}

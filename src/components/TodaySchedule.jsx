@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
-import { startOAuthRedirect, fetchEvents, revokeToken, getRedirectUri } from '../lib/googleCalendar'
+import { startOAuthRedirect, fetchEvents, revokeToken, getRedirectUri, ensureValidToken, tokenIsValid } from '../lib/googleCalendar'
 import { GCAL_CLIENT_ID } from '../config'
 
 function normalizePriority(p) {
@@ -85,12 +85,19 @@ export default function TodaySchedule({ currentUser }) {
   const todayKey = dateKey(todayD)
   const tomorrowKey = dateKey(tomorrowD)
 
-  const tokenValid = token && token.access_token && token.expires_at > Date.now()
+  const tokenValid = tokenIsValid(token)
 
-  const syncWithToken = useCallback(async accessToken => {
+  const syncWithToken = useCallback(async () => {
+    // 期限間近なら silent refresh、失敗していたら例外
+    const result = await ensureValidToken(clientId, currentUser, allTokens)
+    if (result.tokens !== allTokens) setAllTokens(result.tokens)
+    const usable = result.token
+    if (!usable || !usable.access_token) {
+      throw new Error('トークンの自動更新に失敗しました。再連携してください。')
+    }
     const from = new Date(todayD)
     const to = addDays(tomorrowD, 1) // exclusive upper bound
-    const items = await fetchEvents(accessToken, from, to)
+    const items = await fetchEvents(usable.access_token, from, to)
     const grouped = {}
     items.forEach(ev => {
       const start = ev.start
@@ -132,14 +139,15 @@ export default function TodaySchedule({ currentUser }) {
   }
 
   const sync = async () => {
-    if (!tokenValid) return connect()
+    // 現トークンが無い／完全に切れているなら接続フローへ
+    if (!token || (!token.access_token && !tokenValid)) return connect()
     setBusy(true); setGcalError(''); setGcalInfo('')
     try {
-      await syncWithToken(token.access_token)
+      await syncWithToken()
       setGcalInfo(`同期しました（${new Date().toLocaleTimeString('ja-JP')}）`)
     } catch (e) {
-      setGcalError(`同期失敗: ${e.message}. 再接続してください。`)
-      setToken(null)
+      setGcalError(`同期失敗: ${e.message}`)
+      // トークンは消さず残しておく（次回 ensureValidToken で再挑戦）
     } finally {
       setBusy(false)
     }
@@ -152,13 +160,14 @@ export default function TodaySchedule({ currentUser }) {
     setGcalInfo('連携を解除しました')
   }
 
-  // ユーザー切替・初回マウント時に、有効なトークンがあれば自動同期
+  // ユーザー切替・トークン到来時に自動同期。
+  // トークンが期限切れでも ensureValidToken が silent refresh を試みる。
   useEffect(() => {
-    if (tokenValid) {
-      sync()
-    }
+    if (!currentUser) return
+    if (!token || !token.access_token) return
+    sync()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser])
+  }, [currentUser, token?.access_token, token?.expires_at])
 
   const addEntry = (dateK, hour, textRaw, meta = {}) => {
     const text = (textRaw || '').trim()

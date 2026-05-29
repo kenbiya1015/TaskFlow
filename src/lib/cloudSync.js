@@ -36,7 +36,8 @@ const REALTIME_MAX_BACKOFF = 30000
 
 // クラウド同期から除外するキー（ローカル専用）
 const SYNC_EXCLUDE = new Set([
-  'tf_gcal_user_tokens',  // OAuth トークンは端末ごと
+  // tf_gcal_user_tokens は意図的に同期する（端末を跨いで Google 連携を維持するため）。
+  // 注意：anon RLS 設定では同一 workspace 内のメンバー全員が読める。
   'tf_backup_history',    // ローカル世代管理
   'tf_schemaVersion',     // ローカル管理
   'tf_workspace_id',      // ワークスペース設定自体
