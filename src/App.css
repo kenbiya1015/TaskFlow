@@ -40,6 +40,38 @@
 .save-status-saved .save-status-dot {
   background: #d1fae5;
 }
+.save-status-failed {
+  background: rgba(220, 38, 38, 0.94);
+  pointer-events: auto;
+}
+.save-status-failed .save-status-dot {
+  background: #fecaca;
+  animation: save-status-pulse 1.4s ease-in-out infinite;
+}
+.save-status-offline {
+  background: rgba(217, 119, 6, 0.92);
+}
+.save-status-offline .save-status-dot {
+  background: #fde68a;
+}
+.save-status-btn {
+  margin-left: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b91c1c;
+  background: #fff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.save-status-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.save-status-btn:hover:not(:disabled) {
+  background: #fee2e2;
+}
 @keyframes save-status-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }

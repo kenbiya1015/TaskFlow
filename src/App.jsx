@@ -4,7 +4,7 @@ import { useLocalStorage } from './hooks/useLocalStorage'
 import { AUTOSAVE_EVENT } from './hooks/useAutoSave'
 import { MEMBERS, findMember } from './members'
 import { runMigrations, autoBackup } from './lib/storage'
-import { initCloudSync } from './lib/cloudSync'
+import { initCloudSync, STATUS_EVENT, forceFlush, getSyncStatus } from './lib/cloudSync'
 import { consumeOAuthCallback } from './lib/googleCalendar'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
@@ -293,17 +293,64 @@ export default function App() {
 }
 
 function SaveStatusIndicator() {
-  const [state, setState] = useState('idle')
+  // ローカル debounce の保存状態
+  const [autoState, setAutoState] = useState('idle')
+  // クラウド同期の状態（pending 件数・失敗有無・オンライン可否）
+  const [sync, setSync] = useState(() => {
+    try { return getSyncStatus() } catch { return { pendingPushes: 0, hasFailed: false, online: true, connected: false } }
+  })
+  const [retrying, setRetrying] = useState(false)
+
   useEffect(() => {
-    const handler = (e) => setState(e.detail?.state || 'idle')
-    window.addEventListener(AUTOSAVE_EVENT, handler)
-    return () => window.removeEventListener(AUTOSAVE_EVENT, handler)
+    const onAuto = (e) => setAutoState(e.detail?.state || 'idle')
+    const onSync = (e) => setSync(e.detail || {})
+    window.addEventListener(AUTOSAVE_EVENT, onAuto)
+    window.addEventListener(STATUS_EVENT, onSync)
+    return () => {
+      window.removeEventListener(AUTOSAVE_EVENT, onAuto)
+      window.removeEventListener(STATUS_EVENT, onSync)
+    }
   }, [])
-  if (state === 'idle') return null
+
+  const handleRetry = async () => {
+    if (retrying) return
+    setRetrying(true)
+    try { await forceFlush() } finally { setRetrying(false) }
+  }
+
+  // 優先度：失敗 > オフライン > クラウド送信中 > ローカル保存中/完了
+  if (sync.hasFailed) {
+    return (
+      <div className="save-status save-status-failed" role="status" aria-live="assertive">
+        <span className="save-status-dot" aria-hidden />
+        <span>保存に失敗しました（未送信 {sync.pendingPushes || 0} 件）</span>
+        <button className="save-status-btn" onClick={handleRetry} disabled={retrying}>
+          {retrying ? '再送信中…' : '再送信'}
+        </button>
+      </div>
+    )
+  }
+  if (sync.online === false && (sync.pendingPushes || 0) > 0) {
+    return (
+      <div className="save-status save-status-offline" role="status" aria-live="polite">
+        <span className="save-status-dot" aria-hidden />
+        オフライン — {sync.pendingPushes} 件はオンライン復帰時に送信します
+      </div>
+    )
+  }
+  if ((sync.pendingPushes || 0) > 0) {
+    return (
+      <div className="save-status save-status-saving" aria-live="polite">
+        <span className="save-status-dot" aria-hidden />
+        クラウド保存中… ({sync.pendingPushes})
+      </div>
+    )
+  }
+  if (autoState === 'idle') return null
   return (
-    <div className={`save-status save-status-${state}`} aria-live="polite">
+    <div className={`save-status save-status-${autoState}`} aria-live="polite">
       <span className="save-status-dot" aria-hidden />
-      {state === 'saving' ? '保存中…' : '保存しました'}
+      {autoState === 'saving' ? '保存中…' : '保存しました'}
     </div>
   )
 }

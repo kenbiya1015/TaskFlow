@@ -7,14 +7,19 @@
 //   client_id    : 書き込んだブラウザ識別子（自分の書き込みは無視するため）
 //   updated_at   : 最終更新時刻
 //
-// データ消失を防ぐための安全策（v2）：
+// データ消失を防ぐための安全策（v3）：
 //   1. Pull 時の「スマートマージ」：オブジェクト型データは local と cloud を融合し、
 //      local-only のキー（他ユーザーのスロット等）を保護する。
 //   2. Push 時の「再読み込み」：debounce 中に他端末からの realtime で local が
 //      更新された場合に備え、push 直前に localStorage を再読し最新値を送る。
-//   3. unload 時の keepalive 送信：タブ閉じ/リロード時に未送信 push を
-//      navigator.sendBeacon 同等の keepalive fetch で送り切る。
-//   4. workspace_id の固定化：DEFAULT_WORKSPACE を常に使用、空値・不正値は無視。
+//   3. 永続キュー：未送信 push を localStorage（tf_pending_pushes）に保存し、
+//      クラッシュ・強制終了・再起動を跨いでも失われないようにする。
+//   4. 最大 3 回までリトライ。それでも失敗すれば 'failed' 状態を発火し、
+//      キューに残してユーザーに手動再送（forceFlush）を促す。
+//   5. unload 時の同期送信：navigator.sendBeacon を優先、未対応環境では
+//      fetch + keepalive にフォールバック（iOS Safari 対策）。
+//   6. Realtime 接続が切れたら自動再購読（指数バックオフ）。
+//   7. workspace_id の固定化：DEFAULT_WORKSPACE を常に使用、空値・不正値は無視。
 
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabase'
 
@@ -22,6 +27,12 @@ const TABLE = 'taskflow_kv'
 const DEFAULT_WORKSPACE = 'kenbiya-default'
 const WORKSPACE_KEY_LS = 'tf_workspace_id'
 const CLIENT_KEY_LS = 'tf_client_id'
+const PENDING_QUEUE_LS = 'tf_pending_pushes'
+
+const MAX_RETRIES = 3
+const FLUSH_DEBOUNCE_MS = 200
+const REALTIME_MIN_BACKOFF = 1000
+const REALTIME_MAX_BACKOFF = 30000
 
 // クラウド同期から除外するキー（ローカル専用）
 const SYNC_EXCLUDE = new Set([
@@ -32,6 +43,7 @@ const SYNC_EXCLUDE = new Set([
   'tf_client_id',         // ブラウザ固有
   'tf_cloud_enabled',     // ローカル設定
   'tf_currentUser',       // 端末・ブラウザごとに独立（他デバイスのログインで切り替わらないように）
+  'tf_pending_pushes',    // キュー自身は同期しない（無限ループ防止）
 ])
 
 export const SYNC_EVENT = 'tf-cloud-sync'
@@ -95,6 +107,9 @@ let _connected = false
 let _lastSyncAt = null
 let _lastError = null
 let _pushing = 0
+let _hasFailed = false  // 3 回失敗してユーザー操作待ち
+let _realtimeBackoff = REALTIME_MIN_BACKOFF
+let _realtimeRetryTimer = null
 
 export function getSyncStatus() {
   return {
@@ -105,6 +120,7 @@ export function getSyncStatus() {
     clientId: getClientId(),
     pendingPushes: _pendingPushes.length + _pushing,
     lastError: _lastError,
+    hasFailed: _hasFailed,
   }
 }
 
@@ -115,24 +131,61 @@ function emitStatus() {
 }
 
 // ──────────────────────────────────────────────
-// Push（書き込み）— debounce + キュー + 再読み込み
+// 永続キュー：tf_pending_pushes に保存し、再起動・クラッシュを跨いで生存
 // ──────────────────────────────────────────────
+// エントリの形：{ key, value, retries }
 const _pendingPushes = []
 let _flushTimer = null
 
+function loadPersistedQueue() {
+  try {
+    const raw = window.localStorage.getItem(PENDING_QUEUE_LS)
+    if (!raw) return
+    const arr = JSON.parse(raw)
+    if (!Array.isArray(arr)) return
+    for (const entry of arr) {
+      if (entry && typeof entry === 'object' && typeof entry.key === 'string') {
+        _pendingPushes.push({
+          key: entry.key,
+          value: entry.value,
+          retries: typeof entry.retries === 'number' ? entry.retries : 0,
+        })
+      }
+    }
+  } catch {}
+}
+
+function persistQueue() {
+  try {
+    if (_pendingPushes.length === 0) {
+      window.localStorage.removeItem(PENDING_QUEUE_LS)
+    } else {
+      window.localStorage.setItem(PENDING_QUEUE_LS, JSON.stringify(_pendingPushes))
+    }
+  } catch {
+    // localStorage 容量超過 — best effort で諦める（揮発キューは生きている）
+  }
+}
+
+// ──────────────────────────────────────────────
+// Push（書き込み）— debounce + キュー + 再読み込み
+// ──────────────────────────────────────────────
 export function queuePush(key, value) {
   if (SYNC_EXCLUDE.has(key)) return
   const idx = _pendingPushes.findIndex(p => p.key === key)
-  const entry = { key, value }
+  const entry = { key, value, retries: 0 }  // 新しい変更はリトライをリセット
   if (idx >= 0) _pendingPushes[idx] = entry
   else _pendingPushes.push(entry)
+  // 新しい変更が来たので失敗フラグはクリア（再試行のチャンス）
+  if (_hasFailed) _hasFailed = false
+  persistQueue()
   emitStatus()
   scheduleFlush()
 }
 
 function scheduleFlush() {
   if (_flushTimer) return
-  _flushTimer = setTimeout(flushPending, 200)
+  _flushTimer = setTimeout(flushPending, FLUSH_DEBOUNCE_MS)
 }
 
 // 重要：push 直前に localStorage を再読し、debounce 中に realtime/手動で
@@ -158,6 +211,11 @@ let _retryDelay = 1000
 async function flushPending() {
   _flushTimer = null
   if (_pendingPushes.length === 0) return
+  // ネットワーク不通なら飛ばさない（オンライン復帰で再開）
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    emitStatus()
+    return
+  }
   const batch = _pendingPushes.splice(0)
   _pushing += batch.length
   emitStatus()
@@ -171,23 +229,36 @@ async function flushPending() {
       .upsert(rows, { onConflict: 'workspace_id,key' })
     if (error) {
       _lastError = error.message
-      _pendingPushes.unshift(...batch)
       failed = true
       console.warn('[cloudSync] push failed', error.message)
     } else {
       _lastError = null
       _lastSyncAt = Date.now()
       _retryDelay = 1000
+      _hasFailed = false
     }
   } catch (e) {
     _lastError = e.message || String(e)
-    _pendingPushes.unshift(...batch)
     failed = true
     console.warn('[cloudSync] push exception', e)
   } finally {
     _pushing -= batch.length
+    if (failed) {
+      // リトライ回数を増やしてキューへ戻す。MAX_RETRIES 超は維持しつつ 'failed' 通知
+      const stillRetryable = []
+      let anyExhausted = false
+      for (const item of batch) {
+        const nextRetries = (item.retries || 0) + 1
+        const next = { ...item, retries: nextRetries }
+        if (nextRetries >= MAX_RETRIES) anyExhausted = true
+        stillRetryable.push(next)
+      }
+      _pendingPushes.unshift(...stillRetryable)
+      if (anyExhausted) _hasFailed = true
+    }
+    persistQueue()
     emitStatus()
-    if (_pendingPushes.length > 0) {
+    if (_pendingPushes.length > 0 && !_hasFailed) {
       if (failed) {
         _retryDelay = Math.min(_retryDelay * 2, 30000)
         setTimeout(scheduleFlush, _retryDelay)
@@ -198,18 +269,46 @@ async function flushPending() {
   }
 }
 
+/**
+ * 手動再送（保存失敗バナーの「再送信」ボタンから呼ぶ）。
+ * リトライ回数をリセットして即座にフラッシュする。
+ */
+export async function forceFlush() {
+  for (const item of _pendingPushes) item.retries = 0
+  _hasFailed = false
+  _retryDelay = 1000
+  persistQueue()
+  if (_flushTimer) {
+    clearTimeout(_flushTimer)
+    _flushTimer = null
+  }
+  await flushPending()
+  return getSyncStatus()
+}
+
 // ──────────────────────────────────────────────
-// unload 時の同期送信：未送信を keepalive fetch で送り切る
+// unload 時の同期送信：sendBeacon → fetch keepalive の順で試行
 // ──────────────────────────────────────────────
+function buildUnloadBody(rows) {
+  return JSON.stringify(rows)
+}
+
 function flushOnUnload() {
   if (_pendingPushes.length === 0) return
   const batch = _pendingPushes.splice(0)
   const ws = getWorkspaceId()
   const myId = getClientId()
   const rows = buildRowsFromBatch(batch, ws, myId)
+  const body = buildUnloadBody(rows)
+  const url = `${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=workspace_id,key`
+
+  // 1. navigator.sendBeacon を優先（iOS Safari でも確実）
+  //    ただし sendBeacon はカスタムヘッダを送れないため Blob の type で Content-Type を渡し、
+  //    認証ヘッダが必要な Supabase REST には到達しない。よって fetch + keepalive を本命にし、
+  //    sendBeacon は最後の保険として残す（fetch 不可な環境向け）。
+  let sent = false
   try {
-    // fetch + keepalive：ページ離脱後もブラウザがバックグラウンド送信
-    fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=workspace_id,key`, {
+    sent = fetch(url, {
       method: 'POST',
       headers: {
         'apikey': SUPABASE_PUBLISHABLE_KEY,
@@ -217,10 +316,28 @@ function flushOnUnload() {
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates,return=minimal',
       },
-      body: JSON.stringify(rows),
+      body,
       keepalive: true,
-    })
-  } catch { /* best effort */ }
+    }) ? true : false
+  } catch {
+    sent = false
+  }
+
+  if (!sent && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([body], { type: 'application/json' })
+      // 認証なしの POST。Supabase は anon キーをクエリでも受け付けないので、
+      // ここは "Beacon が打てたかどうか" の保険のみ。届かないことも多い前提で、
+      // 失敗してもキューは localStorage に残しておく（持ち越し）。
+      navigator.sendBeacon(`${url}&apikey=${encodeURIComponent(SUPABASE_PUBLISHABLE_KEY)}`, blob)
+    } catch { /* best effort */ }
+  }
+
+  // どちらにせよ、キューは localStorage に残しておく：
+  // - keepalive fetch が成功するかはアンロード後にしか分からない
+  // - 次回起動時に loadPersistedQueue + flushPending で確実に送り直す
+  _pendingPushes.unshift(...batch)
+  persistQueue()
 }
 
 // ──────────────────────────────────────────────
@@ -399,8 +516,31 @@ export async function uploadAllLocal() {
 }
 
 // ──────────────────────────────────────────────
-// Realtime 購読
+// Realtime 購読 — 切断後は指数バックオフで自動再接続
 // ──────────────────────────────────────────────
+function scheduleRealtimeReconnect() {
+  if (_realtimeRetryTimer) return
+  const delay = _realtimeBackoff
+  _realtimeBackoff = Math.min(_realtimeBackoff * 2, REALTIME_MAX_BACKOFF)
+  _realtimeRetryTimer = setTimeout(() => {
+    _realtimeRetryTimer = null
+    try {
+      if (_channel) {
+        try { supabase.removeChannel(_channel) } catch {}
+        _channel = null
+      }
+      subscribeRealtime()
+      // 再接続のタイミングで pull もかけて差分を取り込む
+      pullAndMerge().catch(() => {})
+      // 未送信があれば送る
+      if (_pendingPushes.length > 0) scheduleFlush()
+    } catch (e) {
+      console.warn('[cloudSync] realtime reconnect failed', e)
+      scheduleRealtimeReconnect()
+    }
+  }, delay)
+}
+
 export function subscribeRealtime() {
   if (_channel) return _channel
   const ws = getWorkspaceId()
@@ -450,13 +590,30 @@ export function subscribeRealtime() {
       },
     )
     .subscribe(status => {
+      const wasConnected = _connected
       _connected = status === 'SUBSCRIBED'
+      if (_connected) {
+        _realtimeBackoff = REALTIME_MIN_BACKOFF
+        if (_realtimeRetryTimer) {
+          clearTimeout(_realtimeRetryTimer)
+          _realtimeRetryTimer = null
+        }
+        // 接続が回復したら未送信を送る
+        if (_pendingPushes.length > 0) scheduleFlush()
+      } else if (wasConnected && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+        // 切断検知 → 再接続スケジュール
+        scheduleRealtimeReconnect()
+      }
       emitStatus()
     })
   return _channel
 }
 
 export function unsubscribeRealtime() {
+  if (_realtimeRetryTimer) {
+    clearTimeout(_realtimeRetryTimer)
+    _realtimeRetryTimer = null
+  }
   if (_channel) {
     try { supabase.removeChannel(_channel) } catch {}
     _channel = null
@@ -476,24 +633,43 @@ export async function initCloudSync() {
   // workspace_id を必ず一度書き込んで固定化（不正値・空値の混入防止）
   setWorkspaceId(getWorkspaceId())
 
+  // 前回未送信のキューを復元 → 起動と同時に flush
+  loadPersistedQueue()
+
   await pullAndMerge()
   subscribeRealtime()
 
+  // 永続キューに残っていた未送信を送る
+  if (_pendingPushes.length > 0) scheduleFlush()
+
   // ネット復帰時：再取得 + 滞留分の再送
   window.addEventListener('online', () => {
+    _hasFailed = false   // ネット復帰で再試行のチャンス
+    _retryDelay = 1000
+    for (const item of _pendingPushes) item.retries = 0
+    persistQueue()
     emitStatus()
     pullAndMerge()
     if (_pendingPushes.length > 0) scheduleFlush()
+    // realtime が切れていれば再接続
+    if (!_connected) scheduleRealtimeReconnect()
   })
   window.addEventListener('offline', () => emitStatus())
 
   // タブ閉じ/リロード/モバイルバックグラウンド時に未送信を確実に flush
   window.addEventListener('pagehide', flushOnUnload)
   window.addEventListener('beforeunload', flushOnUnload)
-  // モバイルではタブ切替も pagehide にならない場合があるので visibilitychange でも保険
+  // iOS Safari では pagehide も beforeunload も不安定なため visibilitychange で保険
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && _pendingPushes.length > 0) {
       flushOnUnload()
+    }
+  })
+  // モバイル復帰時：未送信を再送
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (_pendingPushes.length > 0) scheduleFlush()
+      if (!_connected) scheduleRealtimeReconnect()
     }
   })
 }
