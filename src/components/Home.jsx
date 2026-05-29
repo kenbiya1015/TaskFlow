@@ -813,9 +813,10 @@ export default function Home({ userName, onNavigate }) {
         <div className="card-title">
           🗂 タスク管理
           <button
-            className="btn btn-small btn-secondary"
+            className="btn btn-small"
             style={{ float: 'right' }}
             onClick={() => onNavigate?.('tasks')}
+            title="タスク一覧ページで A・B・C・D 全軸の全タスクを表示"
           >すべて見る →</button>
         </div>
         <div className="kanban-board kanban-board-2x2 kanban-board-home">
@@ -854,7 +855,7 @@ export default function Home({ userName, onNavigate }) {
                   {items.length === 0 ? (
                     <div className="kanban-empty">ここにドロップで {col.key} に変更</div>
                   ) : (
-                    items.slice(0, 6).map(t => {
+                    items.map(t => {
                       const ds = dueStatus(t.due)
                       const isEditing = editingTaskId === t.id
                       const isCardOver = dragOverTaskId === t.id
@@ -1012,9 +1013,6 @@ export default function Home({ userName, onNavigate }) {
                         </div>
                       )
                     })
-                  )}
-                  {items.length > 6 && (
-                    <div className="kanban-more">+{items.length - 6} 件</div>
                   )}
                 </div>
               </div>
