@@ -7,12 +7,14 @@ import { runMigrations, autoBackup } from './lib/storage'
 import { initCloudSync, STATUS_EVENT, forceFlush, getSyncStatus } from './lib/cloudSync'
 import {
   consumeOAuthCallback,
+  consumeServerCallback,
+  exchangeServerCode,
   fetchGoogleEmail,
   startGcalAutoRefresh,
   stopGcalAutoRefresh,
   TOKEN_REFRESH_NOTICE_EVENT,
 } from './lib/googleCalendar'
-import { GCAL_CLIENT_ID } from './config'
+import { GCAL_CLIENT_ID, GCAL_USE_BACKEND } from './config'
 import Home from './components/Home'
 import TodaySchedule from './components/TodaySchedule'
 import TaskList from './components/TaskList'
@@ -77,11 +79,41 @@ export default function App() {
     if (typeof window === 'undefined') return
     if (window.location.pathname !== '/auth/callback') return
 
+    const cleanUrl = () => { try { window.history.replaceState({}, '', '/') } catch {} }
+    const hasCode = !!new URLSearchParams(window.location.search || '').get('code')
+
+    // ① サーバーサイド方式（認可コードフロー）：?code=... を Edge Function でトークン交換
+    if (GCAL_USE_BACKEND && hasCode) {
+      const pending = consumeServerCallback()
+      cleanUrl()
+      if (!pending) return
+      if (pending.error) {
+        setOauthNotice(`Google カレンダー連携に失敗しました：${pending.error}`)
+        if (pending.returnTo) setPage(pending.returnTo)
+        return
+      }
+      exchangeServerCode(pending.code, pending.user)
+        .then(token => {
+          if (token && token.access_token) {
+            setAllGcalTokens(prev => ({ ...(prev || {}), [pending.user]: token }))
+            setCurrentUser(pending.user)
+            setPage(pending.returnTo || 'settings')
+            setOauthNotice(`${pending.user} さんの Google カレンダーと連携しました。`)
+          } else {
+            setOauthNotice('Google カレンダー連携に失敗しました（トークン交換に失敗）。')
+            setPage(pending.returnTo || 'settings')
+          }
+        })
+        .catch(e => {
+          setOauthNotice(`Google カレンダー連携に失敗しました：${e.message || e}`)
+          setPage(pending.returnTo || 'settings')
+        })
+      return
+    }
+
+    // ② ブラウザ専用方式（暗黙フロー）：#access_token=... を直接受け取る
     const result = consumeOAuthCallback()
-    // URL を綺麗にする（hash と pathname を root に戻す）
-    try {
-      window.history.replaceState({}, '', '/')
-    } catch {}
+    cleanUrl()
 
     if (!result) return
 
@@ -149,14 +181,15 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // サイレント更新失敗 → ユーザーに再連携を促す
+  // 連携が切れたら「一度だけ静かに」通知する（発火元の googleCalendar 側で重複抑止済み）。
+  // その後は催促しない。再連携は設定画面の小さなボタンから行う。
   useEffect(() => {
     const handler = (e) => {
       const user = e.detail?.user || ''
       if (!user) return
       // 別ユーザーの更新失敗通知は無視（誤通知を防ぐ）
       if (user !== currentUserRef.current) return
-      setGcalReconnectNotice(`${user} さんの Google カレンダー連携が切れました。スケジュール画面で再連携してください。`)
+      setGcalReconnectNotice(`Google カレンダー連携が切れました。設定からいつでも再連携できます。`)
     }
     window.addEventListener(TOKEN_REFRESH_NOTICE_EVENT, handler)
     return () => window.removeEventListener(TOKEN_REFRESH_NOTICE_EVENT, handler)
@@ -164,7 +197,7 @@ export default function App() {
 
   useEffect(() => {
     if (!gcalReconnectNotice) return
-    const t = setTimeout(() => setGcalReconnectNotice(''), 8000)
+    const t = setTimeout(() => setGcalReconnectNotice(''), 6000)
     return () => clearTimeout(t)
   }, [gcalReconnectNotice])
 
@@ -189,7 +222,7 @@ export default function App() {
   const render = () => {
     switch (page) {
       case 'home':     return <Home userName={currentUser} onNavigate={setPage} />
-      case 'schedule': return <TodaySchedule currentUser={currentUser} />
+      case 'schedule': return <TodaySchedule currentUser={currentUser} onNavigate={setPage} />
       case 'tasks':    return <TaskList currentUser={currentUser} />
       case 'members':  return <Members currentUser={currentUser} />
       case 'ideas':    return <Ideas currentUser={currentUser} />
@@ -224,13 +257,18 @@ export default function App() {
         </div>
       )}
       {gcalReconnectNotice && (
+        // 「一度だけ静かに通知」：控えめなトースト。数秒で自動的に消える（催促しない）。
         <div
-          className="save-status save-status-failed"
+          className="save-status"
           role="status"
           aria-live="polite"
-          style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-          onClick={() => { setPage('schedule'); setGcalReconnectNotice('') }}
-          title="クリックでスケジュール画面へ"
+          style={{
+            pointerEvents: 'auto', cursor: 'pointer',
+            background: 'var(--surface-2, #f1f3f5)', color: 'var(--text, #333)',
+            border: '1px solid var(--border, #ddd)',
+          }}
+          onClick={() => { setPage('settings'); setGcalReconnectNotice('') }}
+          title="クリックで設定画面へ"
         >
           {gcalReconnectNotice}
         </div>

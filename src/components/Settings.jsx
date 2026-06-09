@@ -20,7 +20,13 @@ import {
   STATUS_EVENT,
 } from '../lib/cloudSync'
 import { SUPABASE_URL } from '../lib/supabase'
-import { GCAL_CLIENT_ID } from '../config'
+import {
+  startGcalConnect,
+  revokeToken,
+  disconnectServer,
+  tokenIsValid,
+} from '../lib/googleCalendar'
+import { GCAL_CLIENT_ID, GCAL_USE_BACKEND } from '../config'
 
 const PAGE_OPTIONS = [
   { id: 'home',     label: '🏠 マイページ' },
@@ -269,10 +275,17 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
 
       <div className="card">
         <div className="card-title">📅 Google カレンダー連携</div>
+
+        {/* 連携の操作はこの「設定」画面に集約。スケジュール画面では催促しない。 */}
+        <GoogleCalendarConnect currentUser={currentUser} />
+
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
           クライアント ID は本アプリに <strong>組み込み済み</strong> です。<br />
-          実際の接続はスケジュール画面の「📅 Googleカレンダー連携」ボタンから、<strong>メンバーごとに個別</strong>に行えます。<br />
+          連携は <strong>この画面のボタン</strong> から、<strong>メンバーごとに個別</strong>に行います。<br />
           各メンバーは自分の Google アカウントでログインし、今日・明日のスケジュールを自動取得します。<br />
+          {GCAL_USE_BACKEND
+            ? '※ サーバー方式が有効です。リフレッシュトークンを Supabase に保存し、ブラウザを閉じても連携が維持されます。'
+            : '※ 現在はブラウザ方式です（Google セッションが切れると再連携が必要）。サーバー方式は docs/google-calendar-backend-setup.md を参照。'}<br />
           <br />
           <strong>事前準備（管理者のみ）</strong>：Google Cloud Console の OAuth クライアント設定で、
           「承認済みの JavaScript 生成元」に以下を登録してください：
@@ -466,6 +479,77 @@ export default function Settings({ currentUser, onChangeUser, onLogout }) {
           <button className="btn btn-secondary btn-small" onClick={() => clearData('tf_gcal_user_tokens')}>GCalトークン削除</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function GoogleCalendarConnect({ currentUser }) {
+  const [clientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
+  const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
+  const [disconnectedMap, setDisconnectedMap] = useLocalStorage('tf_gcal_disconnected', {})
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const clientId = (clientIdOverride || '').trim() || GCAL_CLIENT_ID
+  const token = allTokens[currentUser] || null
+  const connected = tokenIsValid(token)
+  // 一度連携した形跡があり今は無効、または「切れた」フラグが立っている
+  const broken = !connected && (!!token || !!disconnectedMap[currentUser])
+
+  const connect = () => {
+    setMsg('')
+    if (!currentUser) { setMsg('ユーザーが選択されていません'); return }
+    if (!clientId) { setMsg('クライアント ID が設定されていません'); return }
+    try {
+      // ポップアップは使わず、現在のタブを Google の同意画面へリダイレクト。
+      // 完了後は /auth/callback に戻り、App.jsx でトークンを受け取る。
+      startGcalConnect(clientId, currentUser, 'settings')
+    } catch (e) {
+      setMsg(e.message || String(e))
+    }
+  }
+
+  const disconnect = async () => {
+    if (!confirm(`${currentUser} さんの Google カレンダー連携を解除します。よろしいですか？`)) return
+    setBusy(true); setMsg('')
+    try {
+      if (GCAL_USE_BACKEND) await disconnectServer(currentUser)
+      if (token?.access_token) revokeToken(token.access_token)
+    } finally {
+      // ローカルのトークンと「切れた」フラグを掃除（次回連携をクリーンに）
+      setAllTokens(prev => { const n = { ...(prev || {}) }; delete n[currentUser]; return n })
+      setDisconnectedMap(prev => { const n = { ...(prev || {}) }; delete n[currentUser]; return n })
+      setBusy(false)
+      setMsg('連携を解除しました')
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{currentUser} さん：</span>
+        {connected ? (
+          <>
+            <span style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>● 連携中</span>
+            {token?.email && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{token.email}</span>
+            )}
+            <button className="btn btn-small btn-secondary" onClick={disconnect} disabled={busy}>
+              連携解除
+            </button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 13, color: broken ? 'var(--danger)' : 'var(--text-muted)' }}>
+              {broken ? '⚠ 連携が切れています' : '未連携'}
+            </span>
+            <button className="btn btn-small" onClick={connect} disabled={busy}>
+              {broken ? '🔌 再連携する' : '📅 Googleカレンダー連携'}
+            </button>
+          </>
+        )}
+      </div>
+      {msg && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{msg}</div>}
     </div>
   )
 }

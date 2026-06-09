@@ -14,7 +14,8 @@
       "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"C:\\\\TaskFlow\\\\node_modules\\\\vite\\\\bin\\\\vite.js\" build --logLevel error 2>&1 | Select-Object -First 30)",
       "PowerShell(npx vite build 2>&1 | Select-Object -Last 30)",
       "PowerShell(Get-Location *)",
-      "PowerShell(Join-Path *)"
+      "PowerShell(Join-Path *)",
+      "PowerShell($pkg = Get-Content C:\\\\TaskFlow\\\\package.json -Raw | ConvertFrom-Json; $pkg.scripts | Format-List)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocalStorage, useUserScopedStorage, uid } from '../hooks/useLocalStorage'
-import { startOAuthRedirect, fetchEvents, revokeToken, getRedirectUri, ensureValidToken, tokenIsValid } from '../lib/googleCalendar'
+import { fetchEvents, ensureValidToken, tokenIsValid } from '../lib/googleCalendar'
 import { GCAL_CLIENT_ID } from '../config'
 
 function normalizePriority(p) {
@@ -50,7 +50,7 @@ function fmtTimeRange(ev) {
   return e ? `${fmt(s)}–${fmt(e)}` : fmt(s)
 }
 
-export default function TodaySchedule({ currentUser }) {
+export default function TodaySchedule({ currentUser, onNavigate }) {
   const [schedule, setSchedule] = useLocalStorage('tf_schedule', {})
   const [tasks] = useUserScopedStorage('tf_tasks_by_user', currentUser, [])
   const [eventDone, setEventDone] = useUserScopedStorage('tf_event_done_by_user', currentUser, {})
@@ -58,11 +58,11 @@ export default function TodaySchedule({ currentUser }) {
     setEventDone({ ...(eventDone || {}), [id]: !(eventDone || {})[id] })
   }
 
-  // Google Calendar state（ユーザーごとに分離）
-  const [clientIdOverride, setClientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
+  // Google Calendar state（ユーザーごとに分離）。連携／解除の操作は「設定」画面に集約。
+  const [clientIdOverride] = useLocalStorage('tf_gcal_clientId', '')
   const [allTokens, setAllTokens] = useLocalStorage('tf_gcal_user_tokens', {})
   const [allEvents, setAllEvents] = useLocalStorage('tf_gcal_user_events', {})
-  const [showConfig, setShowConfig] = useState(false)
+  const [disconnectedMap] = useLocalStorage('tf_gcal_disconnected', {})
   const [busy, setBusy] = useState(false)
   const [gcalError, setGcalError] = useState('')
   const [gcalInfo, setGcalInfo] = useState('')
@@ -70,15 +70,8 @@ export default function TodaySchedule({ currentUser }) {
   const clientId = (clientIdOverride || '').trim() || GCAL_CLIENT_ID
 
   const token = allTokens[currentUser] || null
-  const setToken = (t) => {
-    const next = { ...allTokens }
-    if (t == null) delete next[currentUser]
-    else next[currentUser] = t
-    setAllTokens(next)
-  }
 
   const gcalEvents = allEvents[currentUser] || {}
-  const setGcalEvents = (e) => setAllEvents({ ...allEvents, [currentUser]: e })
 
   const todayD = startOfDay(new Date())
   const tomorrowD = addDays(todayD, 1)
@@ -86,6 +79,9 @@ export default function TodaySchedule({ currentUser }) {
   const tomorrowKey = dateKey(tomorrowD)
 
   const tokenValid = tokenIsValid(token)
+  // 連携が「切れている」表示が必要か：一度でも連携した形跡（token あり）があり、
+  // 今は有効でない、または切れ通知済みのとき。未連携のときは何も出さない（催促しない）。
+  const showReconnect = !tokenValid && (!!token || !!disconnectedMap[currentUser])
 
   const syncWithToken = useCallback(async () => {
     // 期限間近なら silent refresh、失敗していたら例外
@@ -118,29 +114,9 @@ export default function TodaySchedule({ currentUser }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayKey, tomorrowKey, currentUser])
 
-  const connect = () => {
-    if (!clientId) {
-      setGcalError('クライアント ID が設定されていません')
-      setShowConfig(true)
-      return
-    }
-    if (!currentUser) {
-      setGcalError('ユーザーが選択されていません')
-      return
-    }
-    setGcalError(''); setGcalInfo('')
-    try {
-      // ポップアップは使わず、現在のタブを Google の同意画面へリダイレクト。
-      // 完了後は /auth/callback に戻り、App.jsx の useEffect でトークンを受け取る。
-      startOAuthRedirect(clientId, currentUser, 'schedule')
-    } catch (e) {
-      setGcalError(e.message || String(e))
-    }
-  }
-
   const sync = async () => {
-    // 現トークンが無い／完全に切れているなら接続フローへ
-    if (!token || (!token.access_token && !tokenValid)) return connect()
+    // トークンが無いときは何もしない（連携は「設定」画面から行う）。
+    if (!token || !token.access_token) return
     setBusy(true); setGcalError(''); setGcalInfo('')
     try {
       await syncWithToken()
@@ -153,15 +129,8 @@ export default function TodaySchedule({ currentUser }) {
     }
   }
 
-  const disconnect = () => {
-    if (token?.access_token) revokeToken(token.access_token)
-    setToken(null)
-    setGcalEvents({})
-    setGcalInfo('連携を解除しました')
-  }
-
   // ユーザー切替・トークン到来時に自動同期。
-  // トークンが期限切れでも ensureValidToken が silent refresh を試みる。
+  // トークンが期限切れでも ensureValidToken が自動更新（サーバー or サイレント）を試みる。
   useEffect(() => {
     if (!currentUser) return
     if (!token || !token.access_token) return
@@ -200,65 +169,36 @@ export default function TodaySchedule({ currentUser }) {
           <div className="page-subtitle">{currentUser} さんの予定　·　{formatLabel(todayD)} ／ {formatLabel(tomorrowD)}</div>
         </div>
         <div className="form-row" style={{ margin: 0, alignItems: 'center' }}>
-          {tokenValid ? (
+          {tokenValid && (
             <>
               <span style={{ fontSize: 12, color: 'var(--success)' }}>● Google接続中</span>
               <button className="btn btn-small" onClick={sync} disabled={busy}>
                 {busy ? '同期中...' : '🔄 同期'}
               </button>
-              <button className="btn btn-small btn-secondary" onClick={disconnect}>連携解除</button>
             </>
-          ) : (
+          )}
+          {showReconnect && (
+            // 連携が切れたときの表示は「小さな再連携ボタンだけ」。ポップアップは出さない。
+            // 実際の連携操作は「設定」画面に集約しているので、そこへ誘導する。
             <button
-              className="btn btn-small"
-              onClick={connect}
-              disabled={busy}
-              title="Google の認証ページへ移動します"
+              className="btn btn-small btn-secondary"
+              onClick={() => onNavigate?.('settings')}
+              title="設定画面で Google カレンダーに再連携します"
+              style={{ fontSize: 12 }}
             >
-              {busy ? '接続中...' : '📅 Googleカレンダー連携'}
+              🔌 再連携する
             </button>
           )}
-          <button
-            className="btn btn-small btn-secondary"
-            onClick={() => setShowConfig(s => !s)}
-            title="クライアント ID 設定"
-          >⚙️</button>
         </div>
       </div>
 
-      {showConfig && (
-        <div className="card" style={{ borderColor: 'var(--accent)' }}>
-          <div className="card-title">⚙️ Google カレンダー設定</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.7 }}>
-            クライアント ID は本アプリに既定値が組み込まれています。<br />
-            別の OAuth クライアントを使う場合のみ下に上書き値を入力してください。<br />
-            Google Cloud Console で以下を登録しておく必要があります：<br />
-            ・「承認済みの JavaScript 生成元」: <code>{location.origin}</code><br />
-            ・「承認済みのリダイレクト URI」: <code>{getRedirectUri()}</code><br />
-            必要 API: <strong>Google Calendar API</strong> ／ スコープ: <code>calendar.readonly</code><br />
-            連携ボタンを押すと Google の同意画面へリダイレクトします（ポップアップは使いません）。
-            各ユーザーごとに別々の Google アカウントと連携できます。
-          </div>
-          <div className="form-row">
-            <input
-              className="text-input"
-              placeholder={`既定値を使用中：${GCAL_CLIENT_ID}`}
-              value={clientIdOverride}
-              onChange={e => setClientIdOverride(e.target.value)}
-            />
-            <button className="btn btn-secondary" onClick={() => setShowConfig(false)}>閉じる</button>
-          </div>
-        </div>
-      )}
-
+      {/* 同期そのものの結果だけ小さく表示（連携切れの催促はしない） */}
       {(gcalError || gcalInfo) && (
         <div
-          className="card"
           style={{
-            padding: '10px 14px', marginBottom: 12,
-            color: gcalError ? 'var(--danger)' : 'var(--success)',
-            borderColor: gcalError ? 'var(--danger)' : 'var(--success)',
-            fontSize: 13,
+            padding: '6px 2px', marginBottom: 10,
+            color: gcalError ? 'var(--danger)' : 'var(--text-muted)',
+            fontSize: 12,
           }}
         >
           {gcalError || gcalInfo}

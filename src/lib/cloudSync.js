@@ -45,6 +45,7 @@ const SYNC_EXCLUDE = new Set([
   'tf_cloud_enabled',     // ローカル設定
   'tf_currentUser',       // 端末・ブラウザごとに独立（他デバイスのログインで切り替わらないように）
   'tf_pending_pushes',    // キュー自身は同期しない（無限ループ防止）
+  'tf_gcal_disconnected', // 「切れた通知を出したか」は端末・セッション固有（同期しない）
 ])
 
 export const SYNC_EVENT = 'tf-cloud-sync'

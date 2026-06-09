@@ -21,6 +21,9 @@
   7. ユーザーごとに別々の Google アカウントを連携できます（state パラメータでユーザーを識別）。
 */
 
+import { GCAL_USE_BACKEND, GCAL_CLIENT_ID } from '../config'
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabase'
+
 const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
 const CALLBACK_PATH = '/auth/callback'
@@ -33,16 +36,30 @@ export function getRedirectUri() {
 // 認証開始前に「どのユーザーが、どのページに戻りたいか」を保持するためのキー
 const PENDING_KEY = 'tf_gcal_oauth_pending'
 
+// 暗黙フロー・認可コードフロー共通の保留情報ヘルパ
+function makeNonce() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+function writePending(pending) {
+  try { window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending)) } catch { /* quota */ }
+}
+function readPending() {
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function clearPending() {
+  try { window.localStorage.removeItem(PENDING_KEY) } catch {}
+}
+
 export function startOAuthRedirect(clientId, user, returnTo) {
   if (!clientId) throw new Error('クライアント ID が未設定です')
   if (!user) throw new Error('ユーザーが指定されていません')
 
   // CSRF 対策の nonce と、戻り先情報を localStorage に格納
-  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36)
-  const pending = { user, returnTo: returnTo || '', nonce, at: Date.now() }
-  try {
-    window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending))
-  } catch { /* quota */ }
+  const nonce = makeNonce()
+  writePending({ user, returnTo: returnTo || '', nonce, at: Date.now(), flow: 'implicit' })
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -54,6 +71,15 @@ export function startOAuthRedirect(clientId, user, returnTo) {
     prompt: 'consent select_account',
   })
   window.location.assign(`${AUTH_ENDPOINT}?${params.toString()}`)
+}
+
+/**
+ * 連携開始の入り口。設定フラグに応じて、サーバーサイド（認可コード）方式か
+ * 従来のブラウザ専用（暗黙）方式かを自動で切り替える。
+ */
+export function startGcalConnect(clientId, user, returnTo) {
+  if (GCAL_USE_BACKEND) return startServerOAuthRedirect(user, returnTo)
+  return startOAuthRedirect(clientId, user, returnTo)
 }
 
 // /auth/callback 着地時に呼ぶ。hash から token を取り出し、保留情報と突き合わせる。
@@ -70,25 +96,21 @@ export function consumeOAuthCallback() {
   const state = params.get('state')
   const error = params.get('error')
 
-  let pending = null
-  try {
-    const raw = window.localStorage.getItem(PENDING_KEY)
-    pending = raw ? JSON.parse(raw) : null
-  } catch { pending = null }
+  const pending = readPending()
 
   if (error) {
-    try { window.localStorage.removeItem(PENDING_KEY) } catch {}
+    clearPending()
     return { error: params.get('error_description') || error, user: pending?.user || '', returnTo: pending?.returnTo || '' }
   }
 
   if (!accessToken || !state) return null
   if (!pending || pending.nonce !== state) {
     // nonce 不一致：別ブラウザでの認証 or 古い state。安全のため破棄。
-    try { window.localStorage.removeItem(PENDING_KEY) } catch {}
+    clearPending()
     return { error: '認証状態が一致しません（state 不一致）。もう一度お試しください。', user: '', returnTo: '' }
   }
 
-  try { window.localStorage.removeItem(PENDING_KEY) } catch {}
+  clearPending()
 
   return {
     user: pending.user,
@@ -153,6 +175,171 @@ export const TOKEN_REFRESH_OK_EVENT = 'tf-gcal-token-refreshed'
 
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000   // 期限 5 分前にプリフライト
 const TOKEN_RETRY_THROTTLE_MS = 30 * 1000        // 失敗連発防止
+
+// ──────────────────────────────────────────────
+// 「切れた通知は一度だけ」用の状態ストア
+// ──────────────────────────────────────────────
+// 連携が切れたら一度だけ静かに通知し、その後は催促しない。
+// ユーザーごとに「切れた通知を出したか」を localStorage に持ち、
+// 再連携・自動更新成功でクリアする（= 次に切れたらまた一度だけ通知できる）。
+export const DISCONNECT_STORE_KEY = 'tf_gcal_disconnected'
+
+function readDisconnectedMap() {
+  try {
+    const raw = window.localStorage.getItem(DISCONNECT_STORE_KEY)
+    return raw ? (JSON.parse(raw) || {}) : {}
+  } catch { return {} }
+}
+function writeDisconnectedMap(map) {
+  try { window.localStorage.setItem(DISCONNECT_STORE_KEY, JSON.stringify(map)) } catch {}
+}
+/** すでに通知済みなら false（=これ以上催促しない）。新規に立てたら true。 */
+function markDisconnected(user) {
+  const map = readDisconnectedMap()
+  if (map[user]) return false
+  map[user] = true
+  writeDisconnectedMap(map)
+  return true
+}
+/** 連携が回復したらフラグを下ろす。 */
+export function clearDisconnected(user) {
+  const map = readDisconnectedMap()
+  if (!map[user]) return
+  delete map[user]
+  writeDisconnectedMap(map)
+}
+/** スケジュール画面で「再連携」表示が必要かの判定に使う。 */
+export function isDisconnected(user) {
+  return !!readDisconnectedMap()[user]
+}
+
+// ──────────────────────────────────────────────
+// サーバーサイド方式（Supabase Edge Functions）クライアント
+// ──────────────────────────────────────────────
+// 認可コードフローで取得したリフレッシュトークンを Supabase に保存し、
+// アクセストークンの発行・更新をサーバー側（Edge Function）に委譲する。
+// client_secret はブラウザに出さず Edge Function 側だけが保持する。
+
+const GCAL_FUNCTION_NAME = 'gcal-oauth'
+
+function getFunctionUrl() {
+  return `${SUPABASE_URL}/functions/v1/${GCAL_FUNCTION_NAME}`
+}
+
+function getWorkspaceId() {
+  try {
+    const raw = window.localStorage.getItem('tf_workspace_id')
+    return (raw ? JSON.parse(raw) : '') || 'default'
+  } catch { return 'default' }
+}
+
+async function callFunction(action, payload) {
+  const res = await fetch(getFunctionUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // Edge Function ゲートウェイ用（publishable key を渡す）
+      'apikey': SUPABASE_PUBLISHABLE_KEY,
+      'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: JSON.stringify({ action, workspace_id: getWorkspaceId(), ...payload }),
+  })
+  let data = null
+  try { data = await res.json() } catch {}
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`
+    const err = new Error(msg)
+    err.status = res.status
+    err.code = data?.code
+    throw err
+  }
+  return data
+}
+
+/** 認可コードフローで Google の同意画面へリダイレクト（offline access でリフレッシュトークンを要求）。 */
+export function startServerOAuthRedirect(user, returnTo) {
+  if (!user) throw new Error('ユーザーが指定されていません')
+  const clientId = GCAL_CLIENT_ID
+  if (!clientId) throw new Error('クライアント ID が未設定です')
+  const nonce = makeNonce()
+  writePending({ user, returnTo: returnTo || '', nonce, at: Date.now(), flow: 'code' })
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: getRedirectUri(),
+    response_type: 'code',
+    scope: SCOPE,
+    include_granted_scopes: 'true',
+    access_type: 'offline',          // リフレッシュトークンを得るため
+    prompt: 'consent select_account', // 毎回 refresh_token を確実に得る
+    state: nonce,
+  })
+  window.location.assign(`${AUTH_ENDPOINT}?${params.toString()}`)
+}
+
+/**
+ * /auth/callback 着地時（認可コードフロー）に呼ぶ。クエリの code/state を保留情報と突き合わせる。
+ * 成功で { user, returnTo, code } を返し、該当が無ければ null。
+ */
+export function consumeServerCallback() {
+  if (typeof window === 'undefined') return null
+  const search = window.location.search || ''
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  const code = params.get('code')
+  const state = params.get('state')
+  const error = params.get('error')
+  const pending = readPending()
+
+  if (error) {
+    clearPending()
+    return { error: params.get('error_description') || error, user: pending?.user || '', returnTo: pending?.returnTo || '' }
+  }
+  if (!code || !state) return null
+  if (!pending || pending.nonce !== state) {
+    clearPending()
+    return { error: '認証状態が一致しません（state 不一致）。もう一度お試しください。', user: '', returnTo: '' }
+  }
+  clearPending()
+  return { user: pending.user, returnTo: pending.returnTo || '', code }
+}
+
+/** 認可コードを Edge Function に渡してトークン交換。サーバー側に refresh_token を保存し、access_token を受け取る。 */
+export async function exchangeServerCode(code, user) {
+  const data = await callFunction('exchange', {
+    code,
+    user,
+    redirect_uri: getRedirectUri(),
+  })
+  if (!data || !data.access_token) return null
+  return {
+    access_token: data.access_token,
+    expires_at: data.expires_at || (Date.now() + (Number(data.expires_in) || 3600) * 1000),
+    email: data.email || undefined,
+    server: true,
+  }
+}
+
+/** サーバー側に保存された refresh_token を使って access_token を再発行（サイレント更新の代替）。 */
+export async function requestServerToken(user) {
+  try {
+    const data = await callFunction('token', { user })
+    if (!data || !data.access_token) return null
+    return {
+      access_token: data.access_token,
+      expires_at: data.expires_at || (Date.now() + (Number(data.expires_in) || 3600) * 1000),
+      email: data.email || undefined,
+      server: true,
+    }
+  } catch {
+    // reauth_required（リフレッシュトークン失効）やネットワーク失敗はサイレントに null
+    return null
+  }
+}
+
+/** サーバー側の refresh_token を破棄（連携解除）。失敗してもローカル解除は続行できるよう例外は飲み込む。 */
+export async function disconnectServer(user) {
+  try { await callFunction('disconnect', { user }) } catch {}
+}
 
 let _gsiPromise = null
 function loadGsiScript() {
@@ -257,11 +444,15 @@ export function tokenIsExpiringSoon(token, marginMs = TOKEN_REFRESH_MARGIN_MS) {
 }
 
 function notifyReconnectNeeded(user) {
+  // 「一度だけ静かに通知」：すでに切れ通知済みのユーザーには再発火しない（催促しない）。
+  if (!markDisconnected(user)) return
   try {
     window.dispatchEvent(new CustomEvent(TOKEN_REFRESH_NOTICE_EVENT, { detail: { user } }))
   } catch {}
 }
 function notifyRefreshed(user) {
+  // 連携が回復したので「切れた」状態を解除（次に切れたら再び一度だけ通知できる）。
+  clearDisconnected(user)
   try {
     window.dispatchEvent(new CustomEvent(TOKEN_REFRESH_OK_EVENT, { detail: { user } }))
   } catch {}
@@ -296,17 +487,22 @@ export async function ensureValidToken(clientId, user, tokens) {
     const t = await _inflight.get(user)
     return { token: t || null, tokens: safeTokens, refreshed: !!t }
   }
-  const p = (async () => {
-    const fresh = await requestTokenSilent(clientId, existing?.email)
-    if (!fresh) return null
-    // 初回かつ email 未取得なら、ここで email も取り直して保存（次回の hint 用）
-    let email = existing?.email || null
-    if (!email) {
-      email = await fetchGoogleEmail(fresh.access_token)
-    }
-    fresh.email = email || undefined
-    return fresh
-  })()
+  // 更新方法はフラグで切替：
+  //  ・サーバーサイド … Edge Function が保存済み refresh_token で再発行（ブラウザを閉じても維持）
+  //  ・ブラウザ専用   … GIS の隠し iframe でサイレント更新（Google セッションが生きている間のみ）
+  const p = GCAL_USE_BACKEND
+    ? requestServerToken(user)
+    : (async () => {
+        const fresh = await requestTokenSilent(clientId, existing?.email)
+        if (!fresh) return null
+        // 初回かつ email 未取得なら、ここで email も取り直して保存（次回の hint 用）
+        let email = existing?.email || null
+        if (!email) {
+          email = await fetchGoogleEmail(fresh.access_token)
+        }
+        fresh.email = email || undefined
+        return fresh
+      })()
   _inflight.set(user, p)
   let fresh = null
   try {
@@ -320,15 +516,20 @@ export async function ensureValidToken(clientId, user, tokens) {
     notifyRefreshed(user)
     return { token: fresh, tokens: nextTokens, refreshed: true }
   } else {
-    // 失敗を記録（既存トークンが有効なら維持しつつ lastSilentFailAt を付ける）
-    const failed = { ...(existing || {}), lastSilentFailAt: Date.now() }
-    const nextTokens = existing ? { ...safeTokens, [user]: failed } : safeTokens
-    notifyReconnectNeeded(user)
-    return {
-      token: tokenIsValid(existing) ? existing : null,
-      tokens: nextTokens,
-      refreshed: false,
+    // 一度でも連携した形跡があるユーザーだけ「切れた」と扱う（未連携への誤通知を防ぐ）。
+    const hadConnection = !!(existing && (existing.access_token || existing.email))
+    if (hadConnection) {
+      // 失敗を記録（lastSilentFailAt を付けてクールダウンを効かせ、一度だけ通知）
+      const failed = { ...existing, lastSilentFailAt: Date.now() }
+      notifyReconnectNeeded(user)
+      return {
+        token: tokenIsValid(existing) ? existing : null,
+        tokens: { ...safeTokens, [user]: failed },
+        refreshed: false,
+      }
     }
+    // 未連携（サーバーにも refresh_token が無い等）：催促せず静かに返す。
+    return { token: null, tokens: safeTokens, refreshed: false }
   }
 }
 
