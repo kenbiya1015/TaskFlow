@@ -15,7 +15,9 @@
       "PowerShell(npx vite build 2>&1 | Select-Object -Last 30)",
       "PowerShell(Get-Location *)",
       "PowerShell(Join-Path *)",
-      "PowerShell($pkg = Get-Content C:\\\\TaskFlow\\\\package.json -Raw | ConvertFrom-Json; $pkg.scripts | Format-List)"
+      "PowerShell($pkg = Get-Content C:\\\\TaskFlow\\\\package.json -Raw | ConvertFrom-Json; $pkg.scripts | Format-List)",
+      "PowerShell(Get-ChildItem -Path C:\\\\TaskFlow\\\\src -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\('C:\\\\TaskFlow\\\\', ''\\) } | Sort-Object)",
+      "PowerShell(\\(Get-Content C:\\\\TaskFlow\\\\src\\\\index.css | Measure-Object -Line\\).Lines; \"----\"; Select-String -Path C:\\\\TaskFlow\\\\src\\\\index.css -Pattern \"btn-icon|\\\\.empty|kanban-touch-dragging-active|drag-over|btn-small\" | Select-Object -First 20 LineNumber, Line)"
     ]
   }
 }

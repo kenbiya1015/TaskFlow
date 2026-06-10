@@ -2312,6 +2312,111 @@
   border-radius: 12px;
 }
 
+/* ===== 今取り組むべき事業 TOP10 ===== */
+.biz-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.biz-rank-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.biz-rank-row.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.biz-rank-row.is-dragging {
+  opacity: 0.5;
+}
+
+.biz-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 14px;
+  background: var(--surface-3);
+  color: var(--text-soft);
+  flex: none;
+}
+
+.biz-rank-1 { background: #fef3c7; color: #92400e; }
+.biz-rank-2 { background: #e5e7eb; color: #374151; }
+.biz-rank-3 { background: #fde2cf; color: #9a3412; }
+
+.biz-drag-handle {
+  align-self: center;
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+  touch-action: none;
+}
+
+.biz-rank-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.biz-rank-title {
+  width: 100%;
+  font-weight: 600;
+}
+
+.biz-rank-note {
+  width: 100%;
+  min-height: 0;
+  resize: vertical;
+  font-size: 13px;
+}
+
+.biz-rank-del {
+  align-self: center;
+  flex: none;
+}
+
+/* マイページのコンパクト表示 */
+.biz-compact .biz-rank-row {
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.biz-compact .biz-rank-badge {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+.biz-compact .biz-rank-title {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.biz-compact .biz-rank-note {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
 /* ===== ホームのタスクリストミニ表示 ===== */
 .home-task-list {
   display: flex;

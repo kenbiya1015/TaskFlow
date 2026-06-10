@@ -25,6 +25,7 @@ import MTMemo from './components/MTMemo'
 import Goals from './components/Goals'
 import BeingGoals from './components/BeingGoals'
 import FuturePlans from './components/FuturePlans'
+import BusinessPriority from './components/BusinessPriority'
 import Strategy from './components/Strategy'
 import Settings from './components/Settings'
 
@@ -38,6 +39,7 @@ const NAV = [
   { id: 'goals',    icon: '🎯', label: '目標' },
   { id: 'being',    icon: '🌟', label: 'なりたい自分' },
   { id: 'future',   icon: '🚀', label: '取り組み' },
+  { id: 'bizpriority', icon: '🏆', label: '事業優先順位' },
   { id: 'strategy', icon: '📋', label: '戦略・戦術' },
   { id: 'members',  icon: '💬', label: 'メンバー伝達' },
   { id: 'settings', icon: '⚙️', label: '設定' },
@@ -231,6 +233,7 @@ export default function App() {
       case 'goals':    return <Goals currentUser={currentUser} />
       case 'being':    return <BeingGoals currentUser={currentUser} />
       case 'future':   return <FuturePlans currentUser={currentUser} />
+      case 'bizpriority': return <BusinessPriority currentUser={currentUser} />
       case 'strategy': return <Strategy currentUser={currentUser} />
       case 'settings': return (
         <Settings

@@ -8,6 +8,7 @@ import { GCAL_CLIENT_ID } from '../config'
 import HandoffSection from './HandoffSection'
 import DueEdit from './DueEdit'
 import { ACCOUNT_MAP as SNS_ACCOUNT_MAP } from './SNS'
+import { BusinessPriorityList, addBizItem, BIZ_PRIORITY_KEY } from './BusinessPriority'
 
 const WEEK_DAYS_JP = ['日', '月', '火', '水', '木', '金', '土']
 const CATEGORIES = ['健美屋', '整体', '個人', '成長', '相手ボール', 'その他']
@@ -62,6 +63,7 @@ export default function Home({ userName, onNavigate }) {
   // 個人別データ
   const [tasks, setTasks] = useUserScopedStorage('tf_tasks_by_user', userName, [])
   const [, setBalls] = useUserScopedStorage('tf_handoff_balls_by_user', userName, [])
+  const [bizPriority, setBizPriority] = useUserScopedStorage(BIZ_PRIORITY_KEY, userName, [])
   const [ideas] = useUserScopedStorage('tf_ideas_by_user', userName, [])
   const [snsPosts] = useUserScopedStorage('tf_sns_by_user', userName, [])
   const [overall, setOverall] = useUserScopedStorage('tf_strategy_overall_by_user', userName, DEFAULT_OVERALL)
@@ -1043,6 +1045,24 @@ export default function Home({ userName, onNavigate }) {
           items: nextScheduleItems,
           isPrimary: false,
         })}
+      </div>
+
+      {/* 今取り組むべき事業 TOP10 */}
+      <div className="card biz-home-card">
+        <div className="card-title">
+          🏆 今取り組むべき事業 TOP10
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="btn btn-small btn-secondary"
+              onClick={() => addBizItem(setBizPriority)}
+            >＋ 追加</button>
+            <button
+              className="btn btn-small btn-secondary"
+              onClick={() => onNavigate?.('bizpriority')}
+            >編集</button>
+          </span>
+        </div>
+        <BusinessPriorityList items={bizPriority} setItems={setBizPriority} compact />
       </div>
 
       {/* 3カードの行：今日やること / なりたい自分 / 今後の取り組み */}
