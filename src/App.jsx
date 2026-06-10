@@ -171,13 +171,19 @@ export default function App() {
     initCloudSync()
       .catch(e => console.warn('[App] cloud sync init failed', e))
       .finally(() => {
-        // 4. クラウド同期で復元したトークンを使って GCal の自動更新を開始
-        startGcalAutoRefresh({
-          getClientId: () => (clientIdRef.current || '').trim() || GCAL_CLIENT_ID,
-          getUser: () => currentUserRef.current,
-          getAllTokens: () => allGcalTokensRef.current,
-          setAllTokens: setAllGcalTokens,
-        })
+        // 4. GCal トークンの自動更新スケジューラ。
+        //    ブラウザ方式（GCAL_USE_BACKEND=false）では、期限切れトークンの自動更新は
+        //    Google のアカウント選択ポップアップを誘発しうるため、起動時の自動更新は行わない。
+        //    （保存済みトークンが有効ならそのまま使用。失効時は設定ページの「再連携」ボタンで明示的に再取得）
+        //    サーバー方式（Edge Function 経由）はポップアップを伴わないため、従来どおり自動更新する。
+        if (GCAL_USE_BACKEND) {
+          startGcalAutoRefresh({
+            getClientId: () => (clientIdRef.current || '').trim() || GCAL_CLIENT_ID,
+            getUser: () => currentUserRef.current,
+            getAllTokens: () => allGcalTokensRef.current,
+            setAllTokens: setAllGcalTokens,
+          })
+        }
       })
     return () => stopGcalAutoRefresh()
   // eslint-disable-next-line react-hooks/exhaustive-deps

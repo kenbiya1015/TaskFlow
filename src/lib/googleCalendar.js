@@ -470,13 +470,36 @@ const _inflight = new Map() // user -> Promise
  * tokens はそのままミューテートせず、新しいオブジェクトを返す。
  * @returns {Promise<{token: object|null, tokens: object, refreshed: boolean}>}
  */
-export async function ensureValidToken(clientId, user, tokens) {
+export async function ensureValidToken(clientId, user, tokens, options = {}) {
+  // allowSilentRefresh:
+  //   false（既定）… 自動でポップアップを出さない。期限切れトークンの「ブラウザ方式」
+  //                   サイレント更新（GIS のアカウント選択ポップアップを誘発しうる）は行わない。
+  //   true          … ユーザーの明示操作時のみ。ブラウザ方式のサイレント更新を許可する。
+  // ※ サーバーサイド方式（Edge Function 経由）の再発行はポップアップを伴わないため、
+  //    allowSilentRefresh の値に関わらず常に自動更新を許可する。
+  const { allowSilentRefresh = false } = options
   const safeTokens = (tokens && typeof tokens === 'object') ? tokens : {}
   if (!user) return { token: null, tokens: safeTokens, refreshed: false }
   const existing = safeTokens[user] || null
   if (tokenIsValid(existing, TOKEN_REFRESH_MARGIN_MS)) {
     return { token: existing, tokens: safeTokens, refreshed: false }
   }
+
+  // 期限切れ（または期限間近）。ここで「自動でポップアップを出さない」ことが要件。
+  // サーバー方式 or 明示操作のときだけトークン再取得を試みる。それ以外は再取得しない。
+  const canAutoRefresh = GCAL_USE_BACKEND || allowSilentRefresh
+  if (!canAutoRefresh) {
+    // まだ数分は使えるトークンならそのまま使う（催促しない）。
+    if (tokenIsValid(existing)) {
+      return { token: existing, tokens: safeTokens, refreshed: false }
+    }
+    // 完全に失効：一度でも連携した形跡があるユーザーにだけ「切れた」通知を一度だけ出す。
+    // （再連携は設定ページの「再連携」ボタンから明示的に行う）
+    const hadConnection = !!(existing && (existing.access_token || existing.email))
+    if (hadConnection) notifyReconnectNeeded(user)
+    return { token: null, tokens: safeTokens, refreshed: false }
+  }
+
   // 失敗直後のクールダウン中はサイレント再試行しない（フリッカ防止）
   const lastFail = existing?.lastSilentFailAt
   if (lastFail && Date.now() - lastFail < TOKEN_RETRY_THROTTLE_MS) {
